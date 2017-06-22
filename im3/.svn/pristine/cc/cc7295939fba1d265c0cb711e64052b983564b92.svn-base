@@ -1,0 +1,247 @@
+package es.ua.dlsi.im3.core.score;
+
+import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.lang3.math.Fraction;
+import org.junit.Before;
+import org.junit.Test;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.AtomPitch;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.PitchClasses;
+import es.ua.dlsi.im3.core.score.ScientificPitch;
+import es.ua.dlsi.im3.core.score.ScoreVoice;
+import es.ua.dlsi.im3.core.score.SingleChord;
+import es.ua.dlsi.im3.core.score.SingleChordTuplet;
+import es.ua.dlsi.im3.core.score.SingleNote;
+import es.ua.dlsi.im3.core.score.SingleRest;
+import es.ua.dlsi.im3.core.score.SingleTuplet;
+import es.ua.dlsi.im3.core.score.mensural.LigatureCumPropietateEtCumPerfectione;
+
+/**
+ * Different tests that show how the Atom construct works
+ * @author drizo
+ */
+public class AtomTest {
+	ArrayList<ScientificPitch> expectedPitches;
+	ArrayList<Fraction> expectedOnsets;
+	
+	@Before
+	public void setUp() throws Exception {
+	}
+	
+	private ScientificPitch createPitch(PitchClasses pc, int octave, Fraction onset) {
+		ScientificPitch pitch = new ScientificPitch(pc, octave);
+		expectedPitches.add(pitch);
+		expectedOnsets.add(onset);
+		return pitch;
+	}
+
+	@Test
+	public void testSingleConstructsInVoice() throws IM3Exception {
+		ScoreVoice voice = new ScoreVoice(null, 1);
+		
+		expectedPitches = new ArrayList<>();
+		expectedOnsets = new ArrayList<>();
+		ArrayList<Fraction> expectedDurations = new ArrayList<>();
+		
+		SingleNote note = new SingleNote(Figures.HALF, 0, createPitch(PitchClasses.A, 3, Fraction.ZERO));
+		voice.add(note);
+		expectedDurations.add(Fraction.getFraction(2,1));
+		
+		SingleNote noteWith2Dots = new SingleNote(Figures.QUARTER, 2, createPitch(PitchClasses.B, 3, Fraction.getFraction(2, 1)));
+		voice.add(noteWith2Dots);
+		expectedDurations.add(Fraction.getFraction(7,4));
+		
+		SingleRest rest = new SingleRest(Figures.EIGTHEEN, 0);
+		voice.add(rest);
+		expectedDurations.add(Fraction.getFraction(1,4));
+		
+		SingleChord chord = new SingleChord(Figures.WHOLE, 0, createPitch(PitchClasses.C, 3, Fraction.getFraction(4, 1)), 
+				createPitch(PitchClasses.D, 3, Fraction.getFraction(4, 1)));
+		voice.add(chord);
+		expectedDurations.add(Fraction.getFraction(4,1));
+		
+		SingleTuplet tuplet = new SingleTuplet(Figures.QUARTER, 0, Figures.EIGHTH, 
+				createPitch(PitchClasses.E, 3, Fraction.getFraction(8, 1)), 
+				createPitch(PitchClasses.F, 3, Fraction.getFraction(25, 3)),
+				createPitch(PitchClasses.G, 3, Fraction.getFraction(26, 3)));
+		expectedDurations.add(Fraction.getFraction(1,1));
+		
+		voice.add(tuplet);
+		
+		assertEquals(5, voice.size());
+		assertEquals(5, expectedDurations.size()); // inner check
+		
+		
+		for (int i=0; i<expectedDurations.size(); i++) {
+			assertEquals("Duration of " + voice.getAtom(i).getClass(), expectedDurations.get(i), voice.getAtom(i).getExactDuration());
+		}
+		
+		List<AtomPitch> pitches = voice.getAtomPitches();
+		assertEquals(expectedPitches.size(), pitches.size());
+		assertEquals(expectedOnsets.size(), pitches.size());
+		for (int i=0; i<expectedPitches.size(); i++) {
+			assertEquals("#"+i, expectedPitches.get(i), pitches.get(i).getScientificPitch());
+			assertEquals("#"+i, expectedOnsets.get(i), pitches.get(i).getTime().getExactTime());
+		}
+		
+		assertEquals(9, voice.getDuration().getComputedTime(), 0.0001);
+	}
+
+	/**
+	 * Mensural ligature
+	 * @throws IM3Exception
+	 */
+	@Test
+	public void testSingleLigatures() throws IM3Exception {
+		LigatureCumPropietateEtCumPerfectione l1 = new LigatureCumPropietateEtCumPerfectione(
+				new ScientificPitch(PitchClasses.G, 3), new ScientificPitch(PitchClasses.A, 3));
+		assertEquals(1, l1.getFigures().size());
+	}
+	
+	@Test
+	public void testSingleChord() throws IM3Exception {
+		SingleChord chord = new SingleChord(Figures.QUARTER, 1, 
+				new ScientificPitch(PitchClasses.C, 3), 
+				new ScientificPitch(PitchClasses.E, 3),
+				new ScientificPitch(PitchClasses.G, 3));
+		assertEquals(1, chord.getFigures().size());
+		assertEquals(3, chord.getFigures().get(0).getOnsetPitches().size());
+		assertEquals(Figures.QUARTER.getDurationWith(1), chord.getDuration().getExactTime());
+	}
+	
+	@Test
+	public void testSingleNote() throws IM3Exception {
+		SingleNote note = new SingleNote(Figures.EIGHTH, 0, 
+				new ScientificPitch(PitchClasses.C, 3));
+		assertEquals(1, note.getFigures().size());
+		assertEquals(1, note.getFigures().get(0).getOnsetPitches().size());
+	}
+
+	@Test
+	public void testSingleRest() throws IM3Exception {
+		SingleRest rest = new SingleRest(Figures.WHOLE, 0);
+		assertEquals(1, rest.getFigures().size());
+		assertNull(rest.getFigures().get(0).getOnsetPitches());
+	}
+	
+	@Test
+	public void testSingleTuplet() throws IM3Exception {
+		SingleTuplet quintuplet = new SingleTuplet(Figures.QUARTER, 0, Figures.EIGTHEEN,
+				new ScientificPitch(PitchClasses.G, 3), 
+				new ScientificPitch(PitchClasses.A, 3),
+				new ScientificPitch(PitchClasses.B, 3),
+				new ScientificPitch(PitchClasses.C, 4),
+				new ScientificPitch(PitchClasses.D, 4)
+				);
+		assertEquals(5, quintuplet.getFigures().size());
+		for (int i=0; i<5; i++) {
+			assertEquals(1, quintuplet.getFigures().get(i).getOnsetPitches().size());
+		}
+		assertEquals(Figures.QUARTER.getDuration(), quintuplet.getDuration().getExactTime());
+	}
+	
+	@Test
+	public void testSingleChordTuplet() throws IM3Exception {
+		SingleChordTuplet triplet = new SingleChordTuplet(Figures.QUARTER, 0, Figures.EIGTHEEN,				
+				new ScientificPitch [] {new ScientificPitch(PitchClasses.C, 4), new ScientificPitch(PitchClasses.E, 4)},
+				new ScientificPitch [] {new ScientificPitch(PitchClasses.D, 4), new ScientificPitch(PitchClasses.F_FLAT, 4)},
+				new ScientificPitch [] {new ScientificPitch(PitchClasses.E, 4), new ScientificPitch(PitchClasses.G, 4)});
+		assertEquals(3, triplet.getFigures().size());
+		for (int i=0; i<3; i++) {
+			assertEquals(2, triplet.getFigures().get(i).getOnsetPitches().size());
+		}
+		assertEquals(Figures.QUARTER.getDuration(), triplet.getDuration().getExactTime());
+	}
+	
+	
+	/**
+	 * Two tied notes built from scratch, see tieNoteTest for a preferred (and simpler) way to do it
+	 * @throws IM3Exception
+	 */
+	@Test
+	public void tiedNotesTest() throws IM3Exception {
+		Atom atom = new Atom();
+		
+		AtomFigure firstNote = atom.addAtomFigure(Figures.EIGHTH, 0);
+		AtomPitch ap = firstNote.addOnsetPitch(new ScientificPitch(PitchClasses.A, 3));
+		
+		AtomFigure secondNote = atom.addAtomFigure(Figures.QUARTER, 1);
+		secondNote.addContinuationPitch(ap);
+		
+		assertEquals(2, atom.getFigures().size());
+		assertEquals(Figures.HALF.getDuration(), atom.getDuration().getExactTime());
+		assertEquals(2.0, atom.getComputedDuration(), 0.0001);
+		assertEquals(0, atom.getFigures().get(0).getRelativeOnset().getComputedTime(), 0.0001);
+		assertEquals(0.5, atom.getFigures().get(1).getRelativeOnset().getComputedTime(), 0.0001);
+	}
+	
+	/**
+	 * Two tied notes built from an existing note
+	 * @throws IM3Exception
+	 */
+	@Test
+	public void tieNoteTest() throws IM3Exception {
+		SingleNote note = new SingleNote(Figures.EIGHTH, 0, new ScientificPitch(PitchClasses.A, 3));
+		note.addTiedNote(Figures.QUARTER, 1);
+		
+		assertEquals(2, note.getFigures().size());
+		assertEquals(Figures.HALF.getDuration(), note.getDuration().getExactTime());
+		assertEquals(2.0, note.getComputedDuration(), 0.0001);
+		assertEquals(0, note.getFigures().get(0).getRelativeOnset().getComputedTime(), 0.0001);
+		assertEquals(0.5, note.getFigures().get(1).getRelativeOnset().getComputedTime(), 0.0001);
+		
+	}	
+	/**
+	 * Two chords (eigth _ dotted quarter) with all their notes tied, built from scratch
+	 * @throws IM3Exception
+	 */
+	@Test
+	public void tiedChordsFromScratchTest() throws IM3Exception {
+		Atom atom = new Atom();
+		
+		AtomFigure firstChord = atom.addAtomFigure(Figures.EIGHTH, 0);
+		AtomPitch ap1 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.A, 3));
+		AtomPitch ap2 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.C, 4));
+		AtomPitch ap3 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.E, 4));
+		
+		AtomFigure secondChord = atom.addAtomFigure(Figures.QUARTER, 1);
+		secondChord.addContinuationPitch(ap1);
+		secondChord.addContinuationPitch(ap2);
+		secondChord.addContinuationPitch(ap3);
+		
+		assertEquals(2, atom.getFigures().size());
+		assertEquals(Figures.HALF.getDuration(), atom.getDuration().getExactTime());		
+	}
+	
+	/**
+	 * Two chords (eigth _ dotted quarter) with all their notes tied, built from scratch
+	 * @throws IM3Exception
+	 */
+	@Test
+	public void partiallyTiedChordsFromScratchTest() throws IM3Exception {
+		Atom atom = new Atom();
+		
+		AtomFigure firstChord = atom.addAtomFigure(Figures.EIGHTH, 0);
+		AtomPitch ap1 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.A, 3));
+		AtomPitch ap2 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.C, 4));
+		AtomPitch ap3 = firstChord.addOnsetPitch(new ScientificPitch(PitchClasses.F, 4)); // this note is not tied
+		
+		AtomFigure secondChord = atom.addAtomFigure(Figures.QUARTER, 1);
+		secondChord.addContinuationPitch(ap1);
+		secondChord.addContinuationPitch(ap2);
+		secondChord.addContinuationPitch(ap3); // this note is not tied
+		
+		assertEquals(2, atom.getFigures().size());
+		assertEquals(Figures.HALF.getDuration(), atom.getDuration().getExactTime());		
+	}
+	
+	//TODO hashCode, equals de todos los objetos.  
+}

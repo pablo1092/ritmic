@@ -1,0 +1,27 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import es.ua.dlsi.im3.core.score.PositionAboveBelow;
+
+public class AMFermata implements IAMMarker {
+	private PositionAboveBelow position = PositionAboveBelow.UNDEFINED;
+
+	
+
+	public PositionAboveBelow getPosition() {
+		return position;
+	}
+
+
+
+	public void setPosition(PositionAboveBelow position) {
+		this.position = position;
+	}
+
+
+
+	@Override
+	public String toString() {
+		return "AMFermata [type=" + position + "]";
+	}
+	
+}

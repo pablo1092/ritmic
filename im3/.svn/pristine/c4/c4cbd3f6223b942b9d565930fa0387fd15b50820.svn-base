@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" xmlns:xlink="http://www.w3.org/1999/xlink" meiversion="2013">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>No diviertan el llanto del niño</title>
+                <composer>Bernardo del Río</composer>
+                <respStmt>
+                    <persName/>
+                </respStmt>
+            </titleStmt>
+            <pubStmt>
+                <availability>
+                    <useRestrict>Copyright © David Rizo</useRestrict>
+                </availability>
+            </pubStmt>
+        </fileDesc>
+        <workDesc>
+            <work>
+                <titleStmt>
+                    <title>No diviertan el llanto del niño</title>
+                    <respStmt>
+                        <persName role="composer">Bernardo del Río</persName>
+                    </respStmt>
+                </titleStmt>
+            </work>
+        </workDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv>
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffGrp n="1" symbol="bracket">
+                                <!-- ¿Cómo le decimos que la clave es G mensural? -->
+                                <staffDef clef.line="2" clef.shape="G" key.mode="major" key.sig="0" lines="5" n="1" xml:id="sd1" meter.sym="c32"/>
+                                <staffDef clef.line="2" clef.shape="G" key.mode="major" key.sig="1f" lines="5" n="1" xml:id="sd2" meter.count="3" meter.unit="2"/>
+                            </staffGrp>
+                        </staffGrp>
+                    </scoreDef>
+                    <section>
+                        <staff n="1">
+                            <layer n="1">
+                                <rest dur="minima"/>
+                                <note dur="minima" oct="5" pname="e" syl="Por"/>
+                                <note dur="minima" oct="5" pname="g" syl="a"/>
+                                <!-- | -->
+                                <note dur="minima" oct="5" pname="g" colored="true" syl="li"/>
+                                <note dur="semibrevis" dots="1" oct="5" pname="f" colored="true" num="3" numbase="2" syl="biar"/>
+                                <!-- | -->
+                                <note dur="minima" oct="5" pname="e" colored="true" syl="los"/>
+                                <beam>
+                                    <note dur="semiminima" oct="5" pname="d" colored="true" syl="so"/>
+                                    <note dur="semiminima" oct="5" pname="c" colored="true" syl="-"/>
+                                </beam>
+                                <!-- | -->
+                                <note dur="minima" oct="5" pname="d" syl="llo"/>
+                                
+                                <note dur="minima" dots="1" oct="5" pname="e" syl="zos"/>
+                                <note dur="semiminima" oct="5" pname="e" syl="de_un"/>
+                                <!-- | -->
+                                <note dur="minima" oct="5" pname="d" syl="tier"/>
+                                <note dur="minima" oct="5" pname="c" syl="no_her"/>
+                                <note dur="semibrevis" oct="5" pname="c" num="3" numbase="2" syl="mo"/>                                
+                                <!-- | -->
+                                <note dur="minima" oct="4" pname="b" syl="so"/>
+                                <note dur="minima" oct="4" pname="b" syl="za"/>
+                                <note dur="semibrevis" dots="1" oct="5" pname="c" num="3" numbase="2" syl="gal"/>
+                            </layer>
+                        </staff>                        
+                        <staff n="2">
+                            <layer n="1">
+                                <measure n="1">
+                                    <rest dur="2"/>
+                                    <note dur="2" oct="4" pname="a"/>
+                                    <note dur="2" oct="5" pname="c"/>
+                                </measure>
+                                <!-- TO-DO ¿@control?, taktplace="10", ¿cómo enlazamos dos pentagramas? -->
+                                <barline form="dashed"/>
+
+                                <measure n="2">
+                                    <note dur="2" oct="5" pname="c"/>
+                                    <note dur="1" oct="4" pname="b" tie= "i"/>
+                                </measure>
+                                <barline form="dashed"/>
+                                
+                                <measure n="3">
+                                    <note dur="2" oct="4" pname="b" tie= "t"/>
+                                    <note dur="2" oct="4" pname="a"/>
+                                    <note dur="4" oct="4" pname="g" slur="i1"/>
+                                    <note dur="4" oct="4" pname="f" slur="t1"/>
+                                </measure>
+                                <barline form="dashed"/>
+                                
+                                <measure n="4">
+                                    <note dur="2" oct="4" pname="g" />
+                                    <note dur="2" dots="1" oct="4" pname="a"/>
+                                    <note dur="4" oct="4" pname="a"/>
+                                </measure>
+                                <barline form="dashed"/>
+
+                                <measure n="5">
+                                    <note dur="2" oct="4" pname="g" />
+                                    <note dur="2" oct="4" pname="f"/>
+                                    <note dur="2" oct="4" pname="f" tie="i"/>
+                                </measure>
+                                <barline form="dashed"/>
+
+                                <measure n="6">
+                                    <note dur="2" oct="4" pname="f" tie="t"/>
+                                    <note dur="2" oct="4" pname="e"/>
+                                    <note dur="2" oct="4" pname="e"/>
+                                </measure>
+                                <barline form="dashed"/>
+
+                                <measure n="7">
+                                    <note dur="1" oct="4" pname="f"/>
+                                </measure>
+                                <barline form="dashed"/>                                
+                            </layer>
+                        </staff>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

@@ -1,0 +1,68 @@
+package es.ua.dlsi.im3.core.score;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+/**
+ * This class should be used just as a preset. The main class to be used is Atom
+ * @author drizo
+ *
+ */
+public class SingleNote extends Atom {
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	AtomFigure atomFigure;
+
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	AtomPitch atomPitch;
+		
+	public SingleNote(Figures figure, int dots, ScientificPitch pitch) {
+		try {
+			atomFigure = addAtomFigure(figure, dots);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException(e); // it should never happen, everything is controlled			
+		}
+		atomPitch = atomFigure.addOnsetPitch(pitch);
+	}
+	public ScientificPitch getPitch() {
+		return atomPitch.getScientificPitch();
+	}
+	public AtomFigure addTiedNote(Figures figure, int dots) {
+		AtomFigure newNote;
+		try {
+			newNote = addAtomFigure(figure, dots);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException(e); // it should never happen, everything is controlled
+		}
+		newNote.addContinuationPitch(atomPitch);
+		return newNote;
+	}
+	public final AtomFigure getAtomFigure() {
+		return atomFigure;
+	}
+	public final AtomPitch getAtomPitch() {
+		return atomPitch;
+	}
+
+	/**
+	 * Explicitly shown accidental
+	 * @param accidToAccidental
+	 * @throws IM3Exception 
+	 */
+	public void setWrittenExplicitAccidental(Accidentals writtenExplicitAccidental) throws IM3Exception {
+		atomPitch.setWrittenExplicitAccidental(writtenExplicitAccidental);		
+	}
+
+	/**
+	 * Accidental that should be played
+	 * @param accidToAccidental
+	 * @throws IM3Exception 
+	 */
+	public void setAccidental(Accidentals accidental) throws IM3Exception {
+		atomPitch.setAccidental(accidental);
+	}
+	
+}

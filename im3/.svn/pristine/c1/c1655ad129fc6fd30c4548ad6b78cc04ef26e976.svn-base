@@ -1,0 +1,89 @@
+/*
+ * Copyright (C) 2013 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ *
+ * @author drizo
+ */
+public class Beam extends Connector<AtomFigure, AtomFigure> implements INotationTypeDependant {
+
+	/**
+	 * It includes the from and to
+	 */
+	ArrayList<AtomFigure> nonRestsInBeam;
+	private boolean inStemUp;
+
+	private final int cardinality;
+
+	private NotationType notationType;
+	
+	/**
+	 * @param cardinality
+	 *            Number of beams (e.g. 2 for 16th)
+	 * @param from The first one
+	 * @param to The last one
+	 * @throws es.ua.dlsi.im3.notation.NotationException
+	 */
+	public Beam(NotationType notationType, AtomFigure from, AtomFigure to, int cardinality)  {
+		super(from, to);
+		this.notationType = notationType;
+		this.from = from;
+		this.to= to;
+		nonRestsInBeam = new ArrayList<>();
+		this.cardinality = cardinality;
+	}
+
+	/**
+	 * Beam lines closest to the heads are located first in the list
+	 * 
+	 * @return
+	 */
+	/*
+	 * public List<BeamLine> getBeamLines() { return beamLines; }
+	 */
+
+	public void addAtomFigure(AtomFigure af) {
+		if (!nonRestsInBeam.contains(af)) {
+			nonRestsInBeam.add(af);
+		}
+		af.setBelongsToBeam(this);
+	}
+
+	public List<AtomFigure> getScoreNonRestsInBean() {
+		return nonRestsInBeam;
+	}
+
+	public boolean isInStemUp() {
+		return inStemUp;
+	}
+
+	@Override
+	public NotationType getNotationType() {
+		return notationType;
+	}
+
+	public final int getCardinality() {
+		return cardinality;
+	}
+	
+	
+}

@@ -1,0 +1,46 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class AMPartGroup {
+	List<AMPartGroup> subgroups;
+	String name;
+	String number;
+	
+	public AMPartGroup(String number) {
+		super();
+		this.number = number;
+	}
+
+	public void addSubgroup(AMPartGroup partGroup) {
+		if (subgroups == null) {
+			subgroups = new ArrayList<>();
+		}
+		subgroups.add(partGroup);
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getNumber() {
+		return number;
+	}
+
+	public void setNumber(String number) {
+		this.number = number;
+	}
+
+	@Override
+	public String toString() {
+		return "AMPartGroup [subgroups=" + subgroups + ", name=" + name + ", number=" + number + "]";
+	}
+
+	
+	
+}

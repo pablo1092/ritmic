@@ -1,0 +1,166 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ * Basic element with duration, composed by at least one pitch and one figure. 
+ * It may contain more pitches (e.g. chords), or more figures (e.g. tied notes), or same figure
+ * for several pitches (e.g. torculus neume), or several pitches with several figures (e.g. tuplets).
+ * This is why everything is private and/or final
+ * @author drizo
+ */
+public class Atom implements Comparable<Atom>, ISymbolInLayer {
+	private Time onset;
+	private Time duration;
+	private List<AtomFigure> figures;
+	private ScoreVoice voice;	
+	private StaffLayer layer;
+	
+	public Atom() {
+		figures = new ArrayList<>();
+		duration = new Time(Fraction.ZERO); 
+	}
+	
+	/**
+	 * Package visibility. Used by voice on the addition of the atom to the voice
+	 * @param voice
+	 */
+	void setVoice(ScoreVoice voice) {
+		this.voice = voice;
+	}
+	
+	public AtomFigure addAtomFigure(Figures figure, int dots) throws IM3Exception {
+		AtomFigure af = new AtomFigure(this, figure, dots);
+		af.setRelativeOnset(duration.getExactTime());
+		figures.add(af);
+		duration = new Time(duration.getExactTime().add(af.getExactDuration()));
+		notifyDurationChange();
+		return af;
+	}
+
+	private void notifyDurationChange() throws IM3Exception {
+		if (voice != null) {
+			voice.onAtomDurationChanged(this);
+		}
+	}
+
+	public AtomFigure addAtomFigureWithAlteredDuration(Figures figure, int dots, Fraction alteredDuration) throws IM3Exception {
+		AtomFigure af = new AtomFigure(this, figure, dots, alteredDuration);
+		af.setRelativeOnset(duration.getExactTime());
+		figures.add(af);
+		duration = new Time(duration.getExactTime().add(af.getExactDuration()));
+		notifyDurationChange();
+		return af;
+	}
+	
+	public final List<AtomFigure> getFigures() {
+		return figures;
+	}
+
+	public final Time getDuration() {
+		return duration;
+	}
+	
+	public final Fraction getExactDuration() {
+		return duration.getExactTime();
+	}
+	
+	public double getComputedDuration() {
+		return this.duration.getComputedTime();
+	}
+
+	/**
+	 * Onset + duration
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public Time getOffset() throws IM3Exception {
+		if (onset == null) {
+			throw new IM3Exception("The offset operation is not valid for an atom without an onset");
+		} else {
+			return onset.add(duration);
+		}
+	}
+
+	public void setTime(Time onset) {
+		this.onset = onset;		
+	}
+
+	@Override	
+	public Time getTime() throws IM3Exception {
+		if (this.onset == null) {
+			throw new IM3Exception("Missing time");
+		}
+		return this.onset;
+	}
+	
+	@Override
+	public boolean hasTime() {
+		return this.onset != null;
+	}
+	
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((duration == null) ? 0 : duration.hashCode());
+		result = prime * result + ((onset == null) ? 0 : onset.hashCode());
+		result = prime * result + ((voice == null) ? 0 : voice.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Atom other = (Atom) obj;
+		if (duration == null) {
+			if (other.duration != null)
+				return false;
+		} else if (!duration.equals(other.duration))
+			return false;
+		if (onset == null) {
+			if (other.onset != null)
+				return false;
+		} else if (!onset.equals(other.onset))
+			return false;
+		if (voice == null) {
+			if (other.voice != null)
+				return false;
+		} else if (!voice.equals(other.voice))
+			return false;
+		return true;
+	}
+
+	@Override
+	public int compareTo(Atom o) {
+		int diff = onset.compareTo(o.onset);
+		if (diff == 0) {
+			diff = duration.compareTo(o.duration);
+			if (diff == 0) {
+				diff = voice.compareTo(o.voice);
+			}
+		}
+		return diff;
+	}
+
+	@Override
+	public final StaffLayer getLayer() {
+		return layer;
+	}
+
+	public final void setLayer(StaffLayer layer) {
+		this.layer = layer;
+	}
+
+}
+

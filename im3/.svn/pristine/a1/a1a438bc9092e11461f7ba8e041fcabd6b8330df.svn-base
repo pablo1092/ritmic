@@ -1,0 +1,57 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import es.ua.dlsi.im3.core.score.Time;
+
+/**
+ * Measure start, common for all parts
+ * @author drizo
+ *
+ */
+public class AMMeasure extends AMTimedElement {
+	/**
+	 * It may be null
+	 */
+	private String number;
+	
+	/**
+	 * In terms of fractions of quarter notes
+	 */
+	//private double duration;
+
+	/**
+	 * 
+	 * @param originalPosition (at list of measures)
+	 * @param time
+	 * @param number
+	 */
+	public AMMeasure(int originalPosition, Time time, String number) {
+		super(originalPosition, time);
+		this.number = number;
+	}
+
+	/*public double getDuration() {
+		return duration;
+	}
+
+
+
+	public void setDuration(double duration) {
+		this.duration = duration;
+	}*/
+
+
+
+	public String getNumber() {
+		return number;
+	}
+
+	public void setNumber(String number) {
+		this.number = number;
+	}
+
+	@Override
+	public String toString() {
+		return "AMMeasure [time = " + time + ", number=" + number + "]";
+	}
+	
+}

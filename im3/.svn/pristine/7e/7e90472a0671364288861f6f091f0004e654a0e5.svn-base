@@ -1,0 +1,60 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import es.ua.dlsi.im3.core.score.Accidentals;
+
+public class AMAccidental {
+	boolean cautionary;
+	boolean editorial;
+	Accidentals accidental;
+	public boolean isCautionary() {
+		return cautionary;
+	}
+	public void setCautionary(boolean cautionary) {
+		this.cautionary = cautionary;
+	}
+	public boolean isEditorial() {
+		return editorial;
+	}
+	public void setEditorial(boolean editorial) {
+		this.editorial = editorial;
+	}
+	public Accidentals getAccidental() {
+		return accidental;
+	}
+	public void setAccidental(Accidentals accidental) {
+		this.accidental = accidental;
+	}
+	@Override
+	public String toString() {
+		return "AMAccidental [accidental=" + accidental + ", cautionary=" + cautionary + ", editorial=" + editorial
+				+ "]";
+	}
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((accidental == null) ? 0 : accidental.hashCode());
+		result = prime * result + (cautionary ? 1231 : 1237);
+		result = prime * result + (editorial ? 1231 : 1237);
+		return result;
+	}
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMAccidental other = (AMAccidental) obj;
+		if (accidental != other.accidental)
+			return false;
+		if (cautionary != other.cautionary)
+			return false;
+		if (editorial != other.editorial)
+			return false;
+		return true;
+	}
+	
+	
+}

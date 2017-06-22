@@ -1,0 +1,49 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+
+/**
+ * From MusicXML
+ * @author drizo
+ *
+ */
+public class AMWork {
+	String number;
+	String title;
+	AMMultipleTypedText persons;
+	
+	String hrefOpus;
+	
+	public String getNumber() {
+		return number;
+	}
+	public void setNumber(String number) {
+		this.number = number;
+	}
+	public String getTitle() {
+		return title;
+	}
+	public void setTitle(String title) {
+		this.title = title;
+	}
+	public String getHrefOpus() {
+		return hrefOpus;
+	}
+	
+	public AMMultipleTypedText getPersons() {
+		return persons;
+	}
+	public void setHrefOpus(String hrefOpus) {
+		this.hrefOpus = hrefOpus;
+	}
+	@Override
+	public String toString() {
+		return "AMWork [number=" + number + ", title=" + title + ", hrefOpus=" + hrefOpus + ", persons=" + persons + "]";
+	}
+	public void addPerson(String role, String name) {
+		if (persons == null) {
+			persons = new AMMultipleTypedText();
+		}
+		this.persons.add(role, name);
+		
+	}
+}

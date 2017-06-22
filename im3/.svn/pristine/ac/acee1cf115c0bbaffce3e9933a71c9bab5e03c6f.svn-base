@@ -1,0 +1,229 @@
+package es.ua.dlsi.im3.core.score.io;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Function;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import es.ua.dlsi.im3.TestFileUtils;
+import es.ua.dlsi.im3.core.score.Accidentals;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.AtomPitch;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.PitchClasses;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.Staff;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.TimeSignature;
+import es.ua.dlsi.im3.core.score.io.mei.MEISongExporter;
+import es.ua.dlsi.im3.core.score.io.mei.MEISongImporter;
+import es.ua.dlsi.im3.core.score.io.musicxml.MusicXMLImporter;
+import es.ua.dlsi.im3.core.score.mensural.meters.Perfection;
+import es.ua.dlsi.im3.core.score.mensural.meters.TimeSignatureMensural;
+import es.ua.dlsi.im3.core.score.meters.FractionalTimeSignature;
+import es.ua.dlsi.im3.io.ImportException;
+
+/**
+ * MusicXML and MEI common tests
+ * @author drizo
+ */
+public class XMLExporterImporterTest {
+	
+	@Before
+	public void setUp() throws Exception {
+	}
+
+	public ScoreSong importMEI(File file) throws ImportException {
+		MEISongImporter importer = new MEISongImporter();
+		ScoreSong song = importer.importSong(file);
+		return song;
+	}
+	
+	public ScoreSong importMusicXML(File file) throws ImportException {
+		MusicXMLImporter importer = new MusicXMLImporter();
+		ScoreSong song = importer.importSong(file);
+		return song;
+	}
+	
+	private static Void assertSingle1(ScoreSong song) {
+		try {
+			assertEquals("Parts", 1, song.getParts().size());
+			assertEquals("Staves", 1, song.getStaves().size());
+			assertEquals("Symbols in staff", 9, song.getStaves().get(0).getCoreSymbolsOrdered().size());
+			Staff firstStaff = song.getStaves().get(0);
+			assertEquals("KeySignatures", 1, firstStaff.getKeySignatures().size());
+			assertEquals("Key", Accidentals.SHARP, firstStaff.getKeySignatureAtTime(Time.TIME_ZERO).getAccidental());
+			assertEquals("Key notes", 2, firstStaff.getKeySignatureAtTime(Time.TIME_ZERO).getKey().getAlteredNoteNames().length);
+			assertEquals("Meters", 1, firstStaff.getTimeSignatures().size());
+			TimeSignature ts = firstStaff.getTimeSignatureAtTime(Time.TIME_ZERO);
+			assertEquals("Meter num", 4, ((FractionalTimeSignature)ts).getNumerator());
+			assertEquals("Meter den", 4, ((FractionalTimeSignature)ts).getDenominator());
+			assertEquals("Measures", 2, song.getMeaureCount());
+			List<AtomFigure> atomFigures = song.getParts().get(0).getUniqueVoice().getAtomFigures();		
+			Figures [] expectedFigs = {Figures.WHOLE, Figures.QUARTER, Figures.QUARTER, Figures.EIGHTH,
+					Figures.EIGHTH, Figures.QUARTER};
+			assertEquals("Num figures", expectedFigs.length, atomFigures.size());
+					
+			for (int i=0; i<expectedFigs.length; i++) {
+				assertEquals("Figure #" + i, expectedFigs[i], atomFigures.get(i).getFigure());
+			}
+	
+			PitchClasses [] expectedPitchClasses = {PitchClasses.G, PitchClasses.F_SHARP, PitchClasses.G_SHARP,
+					PitchClasses.A
+			};
+			int [] expectedOctaves = {4,4,4,5};
+			List<AtomPitch> atomPitches = song.getParts().get(0).getUniqueVoice().getAtomPitches();
+			assertEquals(expectedPitchClasses.length, atomPitches.size());
+			for (int i=0; i<expectedPitchClasses.length; i++) {
+				assertEquals(expectedPitchClasses[i].getPitchClass(), atomPitches.get(i).getScientificPitch().getPitchClass());
+				assertEquals("Pitch #i=" + i, expectedOctaves[i], atomPitches.get(i).getScientificPitch().getOctave());
+			}
+			
+			assertTrue(atomFigures.get(2).isRest());
+			assertTrue(atomFigures.get(4).isRest());
+			
+			assertEquals("Measures", 2, song.getNumMeasures());
+			
+			
+		} catch (Throwable t) {
+			t.printStackTrace();
+			fail(t.toString());
+		}
+		return null;
+	}
+	
+	private void doTest(Function<ScoreSong, Void> validationFunction, ScoreSong song) throws Exception {		
+		validationFunction.apply(song);
+		MEISongExporter exporter = new MEISongExporter();
+		//File file = File.createTempFile("export", "mei");
+		File file = new File("/tmp/aa.mei");
+		exporter.exportSong(file, song);
+		
+		ScoreSong importedSong = importMEI(file);
+		validationFunction.apply(importedSong);
+	}
+	
+	@Test
+	public void testSingle1() throws Exception {
+		doTest(XMLExporterImporterTest::assertSingle1, importMEI(TestFileUtils.getFile("/testdata/score/io/simple1.mei")));
+		doTest(XMLExporterImporterTest::assertSingle1, importMusicXML(TestFileUtils.getFile("/testdata/score/io/simple1.xml")));
+	}
+
+	// this song contains a different time signature at the same staff in different staves 
+	private static Void assertMensural1(ScoreSong song) {
+		try {
+			List<Staff> staves = song.getStaves(); 
+			assertEquals("Staves", 3, staves.size());
+			assertEquals("triplum", staves.get(0).getName());
+			assertEquals("motetus", staves.get(1).getName());
+			assertEquals("tenor", staves.get(2).getName());
+			
+			Time lastMeterChangeTime = null;
+			for (Staff staff: staves) {
+				assertEquals("Time signature changes at " + staff.getName(), 3, staff.getTimeSignatures().size());
+				TimeSignature lastTS = null;
+				for (Iterator<TimeSignature> iterator = staff.getTimeSignatures().iterator(); 
+						iterator.hasNext();) {
+					lastTS = iterator.next();
+				}
+				assertTrue(lastTS instanceof TimeSignatureMensural);
+				TimeSignatureMensural tsm = (TimeSignatureMensural) lastTS;
+				assertEquals(Perfection.perfectum, tsm.getModusMinor());
+				assertEquals(Perfection.perfectum, tsm.getProlatio());
+				assertEquals(Perfection.perfectum, tsm.getTempus());
+				if (lastMeterChangeTime == null) {
+					lastMeterChangeTime = lastTS.getTime(); 
+				} else {
+					assertEquals("Last meter time at " + staff.getName(), lastMeterChangeTime, lastTS.getTime());
+				}
+				
+			}
+			
+			//assertEquals("Time signatures", 3, song.getMeters().size());
+			/*List<ISymbolInLayer> tenorSymbols = staves.get(2).getNotationSymbolsOrdered();
+			
+			Class<?>[] expectedClasses = {
+					ClefG2OttavaBassa.class, KeySignature.class, TimeSignature.class,
+					SingleNote.class, Barline.class, 
+					SingleNote.class, Barline.class, 
+					SingleNote.class, Barline.class, 
+					SingleRest.class, Barline.class, 
+					TimeSignature.class,
+					SingleNote.class, Barline.class, 
+					SingleNote.class, Barline.class, 
+					SingleNote.class, Barline.class, 
+					SingleNote.class, Barline.class, 
+					SingleRest.class, Barline.class,
+					SingleRest.class, Barline.class,
+					TimeSignature.class,
+					SingleNote.class, Barline.class					
+			};
+			for (int i=0; i<expectedClasses.length; i++) {
+				assertEquals("Class #" + i, expectedClasses[i], tenorSymbols.get(i).getClass());
+			}*/
+			
+			/*assertEquals("Tenor Clef", ClefG2OttavaBassa.class, tenorSymbols.get(0).getClass());
+			assertEquals("Tenor First (empty) Key Signature", KeySignature.class, tenorSymbols.get(1).getClass());
+			//TODO Qué tipo de time signature
+			assertEquals("Tenor First Time Signature", TimeSignature.class, tenorSymbols.get(2).getClass());
+			for (int i=3; i<=5; i++) {
+				assertEquals("Tenor Notes (3-5)", SingleNote.class, tenorSymbols.get(i).getClass());
+				assertEquals("Tenor notes figure", Figures.LONGA, ((SingleNote)tenorSymbols.get(i)).getAtomFigure().getFigure());
+			}
+			assertEquals("Tenor Rest 6", SingleRest.class, tenorSymbols.get(6).getClass());
+			assertEquals("Tenor Rest figure", Figures.LONGA, ((SingleRest)tenorSymbols.get(6)).getAtomFigure().getFigure());
+			for (int i=7; i<=10; i++) {
+				assertEquals("Tenor Notes (7-10)", SingleNote.class, tenorSymbols.get(i).getClass());
+				assertEquals("Tenor notes figure", Figures.LONGA, ((SingleNote)tenorSymbols.get(i)).getAtomFigure().getFigure());
+			}
+			for (int i=11; i<=12; i++) {
+				assertEquals("Tenor Rest (11-12)", SingleRest.class, tenorSymbols.get(i).getClass());
+				assertEquals("Tenor Rest figure", Figures.LONGA, ((SingleRest)tenorSymbols.get(i)).getAtomFigure().getFigure());				
+			}
+			//TODO Qué tipo de time signature
+			assertEquals("Tenor Time Signature Change", TimeSignature.class, tenorSymbols.get(13).getClass());
+			
+			assertEquals("Tenor Note 14", SingleNote.class, tenorSymbols.get(14).getClass());
+			assertEquals("Tenor notes figure", Figures.LONGA, ((SingleNote)tenorSymbols.get(14)).getAtomFigure().getFigure());
+			
+			assertEquals("Tenor symbols (with barlines)", 25, tenorSymbols.size());*/
+		} catch (Throwable t) {
+			t.printStackTrace();
+			fail(t.getMessage());
+		}
+		return null;
+	}
+	@Test
+	public void testMensural1() throws Exception {
+		doTest(XMLExporterImporterTest::assertMensural1, importMEI(TestFileUtils.getFile("/testdata/score/io/garisonMEI.mei")));
+	}
+
+	// this song contains a different time signature at the same staff in different staves 
+	private static Void assertSpanishMensural1(ScoreSong song) {
+		try {
+			List<Staff> staves = song.getStaves(); 
+			assertEquals("Staves", 2, staves.size());
+
+		} catch (Throwable t) {
+			t.printStackTrace();
+			fail(t.getMessage());
+		}
+		return null;
+	}	
+	@Test
+	public void testSpanishMensural1() throws Exception {
+		doTest(XMLExporterImporterTest::assertSpanishMensural1, importMEI(TestFileUtils.getFile("/testdata/score/io/nodiviertanllantoninyo.mei")));
+	}
+
+	
+	//TODO cross-staff-multilayer, cross-staff
+	
+	
+}

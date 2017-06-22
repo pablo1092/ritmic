@@ -1,0 +1,49 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import es.ua.dlsi.im3.core.score.Time;
+
+public class AMClef extends AMTimedElement implements IAMElementWithStaff {
+	String sign;
+	int line;
+	Integer octaveChange;
+	AMStaff staff;
+	
+	public AMClef(int originalPosition, Time time) {
+		super(originalPosition, time);
+	}
+	
+	public String getSign() {
+		return sign;
+	}
+	public void setSign(String sign) {
+		this.sign = sign;
+	}
+	public int getLine() {
+		return line;
+	}
+	public void setLine(int line) {
+		this.line = line;
+	}
+
+	public AMStaff getStaff() {
+		return staff;
+	}
+
+	public void setStaff(AMStaff staff) {
+		this.staff = staff;
+	}
+
+	public Integer getOctaveChange() {
+		return octaveChange;
+	}
+
+	public void setOctaveChange(Integer octaveChange) {
+		this.octaveChange = octaveChange;
+	}
+
+	@Override
+	public String toString() {
+		return "AMClef [time = " + time + ", sign=" + sign + ", line=" + line + ", octave change=" + octaveChange + "]";
+	}
+
+}

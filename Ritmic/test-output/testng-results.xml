@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testng-results skipped="0" failed="0" total="3" passed="3">
+  <reporter-output>
+  </reporter-output>
+  <suite name="Default suite" duration-ms="265" started-at="2017-06-14T09:48:32Z" finished-at="2017-06-14T09:48:32Z">
+    <groups>
+    </groups>
+    <test name="Default test" duration-ms="265" started-at="2017-06-14T09:48:32Z" finished-at="2017-06-14T09:48:32Z">
+      <class name="es.pablo.ritmic.actividades.CorreccionActivdadLecturaTest">
+        <test-method status="PASS" signature="corrigeMuchaDesviacion()[pri:0, instance:es.pablo.ritmic.actividades.CorreccionActivdadLecturaTest@91161c7]" name="corrigeMuchaDesviacion" duration-ms="234" started-at="2017-06-14T11:48:32Z" finished-at="2017-06-14T11:48:32Z">
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- corrigeMuchaDesviacion -->
+        <test-method status="PASS" signature="corrigePocaDesviacion()[pri:0, instance:es.pablo.ritmic.actividades.CorreccionActivdadLecturaTest@91161c7]" name="corrigePocaDesviacion" duration-ms="16" started-at="2017-06-14T11:48:32Z" finished-at="2017-06-14T11:48:32Z">
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- corrigePocaDesviacion -->
+        <test-method status="PASS" signature="corrigeTest()[pri:0, instance:es.pablo.ritmic.actividades.CorreccionActivdadLecturaTest@91161c7]" name="corrigeTest" duration-ms="0" started-at="2017-06-14T11:48:32Z" finished-at="2017-06-14T11:48:32Z">
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- corrigeTest -->
+      </class> <!-- es.pablo.ritmic.actividades.CorreccionActivdadLecturaTest -->
+    </test> <!-- Default test -->
+  </suite> <!-- Default suite -->
+</testng-results>

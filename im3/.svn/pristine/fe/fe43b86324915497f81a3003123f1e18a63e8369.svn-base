@@ -1,0 +1,915 @@
+/*
+ * Copyright (C) 2017 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score.io.mei;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map.Entry;
+
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.apache.commons.lang3.math.Fraction;
+import org.xml.sax.SAXException;
+
+import es.ua.dlsi.im3.core.score.Accidentals;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.NoteNames;
+import es.ua.dlsi.im3.core.score.StemDirection;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.io.XMLSAXImporter;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMAccidental;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMBeam;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMChord;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMClef;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMDynamics;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMHairpin;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMHairpinCrescendo;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMHairpinDiminuendo;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMKey;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMMeasure;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMNoteOrRest;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMPart;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMSlur;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMSong;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMStaff;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMStaffPlaceHolder;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMTie;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMTimeSignature;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMTimedElement;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMWork;
+import es.ua.dlsi.im3.io.ImportException;
+
+/**
+ * MusicXML implemented with SAX to improve performance over JAXB.
+ * 
+ * @author drizo
+ */
+public class MEISAXImporterAbstractModel extends XMLSAXImporter {
+
+	class PendingConnector {
+		AMMeasure measure;
+		String tstamp;
+		String tstamp2;
+		String startid;
+		String endid;
+		String tag;
+		String content;
+		AMStaff staff;
+		String layer;
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result + ((content == null) ? 0 : content.hashCode());
+			result = prime * result + ((endid == null) ? 0 : endid.hashCode());
+			result = prime * result + ((layer == null) ? 0 : layer.hashCode());
+			result = prime * result + ((measure == null) ? 0 : measure.hashCode());
+			result = prime * result + ((staff == null) ? 0 : staff.hashCode());
+			result = prime * result + ((startid == null) ? 0 : startid.hashCode());
+			result = prime * result + ((tag == null) ? 0 : tag.hashCode());
+			result = prime * result + ((tstamp == null) ? 0 : tstamp.hashCode());
+			result = prime * result + ((tstamp2 == null) ? 0 : tstamp2.hashCode());
+			return result;
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			PendingConnector other = (PendingConnector) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (content == null) {
+				if (other.content != null)
+					return false;
+			} else if (!content.equals(other.content))
+				return false;
+			if (endid == null) {
+				if (other.endid != null)
+					return false;
+			} else if (!endid.equals(other.endid))
+				return false;
+			if (layer == null) {
+				if (other.layer != null)
+					return false;
+			} else if (!layer.equals(other.layer))
+				return false;
+			if (measure == null) {
+				if (other.measure != null)
+					return false;
+			} else if (!measure.equals(other.measure))
+				return false;
+			if (staff == null) {
+				if (other.staff != null)
+					return false;
+			} else if (!staff.equals(other.staff))
+				return false;
+			if (startid == null) {
+				if (other.startid != null)
+					return false;
+			} else if (!startid.equals(other.startid))
+				return false;
+			if (tag == null) {
+				if (other.tag != null)
+					return false;
+			} else if (!tag.equals(other.tag))
+				return false;
+			if (tstamp == null) {
+				if (other.tstamp != null)
+					return false;
+			} else if (!tstamp.equals(other.tstamp))
+				return false;
+			if (tstamp2 == null) {
+				if (other.tstamp2 != null)
+					return false;
+			} else if (!tstamp2.equals(other.tstamp2))
+				return false;
+			return true;
+		}
+		private MEISAXImporterAbstractModel getOuterType() {
+			return MEISAXImporterAbstractModel.this;
+		}
+		@Override
+		public String toString() {
+			return "PendingConnector [measure=" + measure.getNumber() + 
+					", tstamp=" + tstamp + ", tstamp2=" + tstamp2 + ", startid="
+					+ startid + ", endid=" + endid + ", tag=" + tag + ", content=" + content + ", staff=" 
+					+ (staff!=null?staff.getNumber():"null")
+					+ ", layer=" + layer + "]";
+		}
+	}
+	
+	static final HashMap<String, Figures> FIGURES = new HashMap<>();
+	static {
+		FIGURES.put("breve", Figures.BREVE);
+		FIGURES.put("1", Figures.WHOLE);
+		FIGURES.put("2", Figures.HALF);
+		FIGURES.put("4", Figures.QUARTER);
+		FIGURES.put("8", Figures.EIGHTH);
+		FIGURES.put("16", Figures.SIXTEENTH);
+		FIGURES.put("32", Figures.THIRTY_SECOND);
+		FIGURES.put("64", Figures.SIXTY_FOURTH);
+		FIGURES.put("128", Figures.HUNDRED_TWENTY_EIGHTH);
+		FIGURES.put("256", Figures.TWO_HUNDRED_FIFTY_SIX);
+	}
+	
+	protected Figures getFigure(String content, HashMap<String, String> elementAttributes) throws ImportException {
+		Figures figure = FIGURES.get(content);
+		if (figure == null) {
+			throw new ImportException("Unknown figure type: " + content);
+		}
+		return figure;
+	}	
+	
+	HashMap<String, AMTimedElement> xmlIDs;
+	HashSet<PendingConnector> pendingConnectors;
+	String titleType;
+	// they may be used in handleElementContent, not always initialized, only for elements that we know will use them
+	//protected HashMap<String, String> attributesMap;
+	HashMap<String, Time> currentTime;
+	private AMMeasure currentMeasure;
+	
+	AMPart currentScorePart;
+	AMClef lastClef;
+	AMStaff lastStaff;
+	AMNoteOrRest currentNote;
+	private AMChord lastChord;
+	private HashMap<String, AMTie> currentTies;
+	private String personRole;
+	private String lastLayer;
+	private String lastNotePitch;
+	int staffCount=0;
+	int layerCount=0;
+	
+	AMTimeSignature lastTimeSignature;
+	Time lastMeasureTime;
+	private String lastStaffNumber;
+	private AMDynamics lastDynamics;
+	AMStaffPlaceHolder currentStaffPlaceHolder;
+	HashMap<Time, AMStaffPlaceHolder> placeHolders;
+	protected boolean importingMusic = false;
+	AMBeam currentBeam;
+	
+	//////////////////////////////// MusicXML
+	/*private ArrayDeque<AMPartGroup> partGroups;
+	//AMAccidental lastAccidental;
+	AMTuplet lastTuplet;
+	
+	private HashMap<String, AMSlur> currentSlurs;
+	AMLyrics lastLyrics;*/
+	//AMKey lastKey;
+	//////////////////////////////////////////////// END MusicXML
+	
+	@Override
+	protected void init() throws ParserConfigurationException, SAXException {
+		song = new AMSong(); //TODO ¿Y si es una colección?
+		currentTies = new HashMap<>();
+		currentTime = new HashMap<>();
+		xmlIDs = new HashMap<>();
+		pendingConnectors = new HashSet<>();
+		placeHolders = new HashMap<>();
+		lastMeasureTime = Time.TIME_ZERO;
+	}
+	
+	private Time getCurrentTime() {
+		String code = lastStaff==null?"_":lastStaff.hashCode() + lastLayer;
+		//String code = lastLayer;
+		Time time = currentTime.get(code);
+		if (time == null) {
+			currentTime.put(code, lastMeasureTime);
+			return lastMeasureTime;
+		} else {
+			return time;
+		}
+	}
+	
+	private void incrementCurrentTime(Time duration) throws ImportException {
+		if (duration == null) {
+			throw new ImportException("Duration parameter is null");
+		}
+		String code = lastStaff==null?"_":lastStaff.hashCode() + lastLayer;
+		Time time = currentTime.get(code);
+		if (time == null) {
+			currentTime.put(code, duration);
+		} else {
+			currentTime.put(code, time.add(duration));
+		}		
+	}
+	
+	@Override
+	public void doHandleOpenElement(String element, HashMap<String, String> attributesMap) throws ImportException {		
+		String number;
+		String label;
+		String dots;
+		String dur;
+		Figures figure;
+		String xmlid;
+		String keySig;
+		String keyMode;
+		String clefLine;
+		String clefShape;
+		String tstamp;
+		//String tstamp2;
+		String staffNumber;
+		String layerNumber;
+		Time time;
+		PendingConnector pendingConnector;
+		
+		//attributesMap = getAttributes(element, saxAttributes);
+
+		if (element.equals("music")) {
+			importingMusic = true; //TODO gestionar esto de otra forma - ¿estados? - ¿consume() como en eventos JavaFX?
+		} else if (importingMusic) { // avoid parse other MEI extensions such as the hierarchical analysis here
+			switch (element) {
+			case "work":
+				song.setWork(new AMWork());
+				break;
+			case "title":
+				titleType = getOptionalAttribute(attributesMap, "type");
+				break;
+			case "persName":
+				personRole = getOptionalAttribute(attributesMap, "role");
+				break;
+			case "scoreDef":
+				String meterCount = getOptionalAttribute(attributesMap, "meter.count");
+				String meterUnit = getOptionalAttribute(attributesMap, "meter.unit");
+				String meterSym = getOptionalAttribute(attributesMap, "meter.sym");
+				if (meterCount != null || meterUnit != null || meterSym != null) {
+					int pos = song.getTimeSignatures() == null?0:song.getTimeSignatures().size();
+					lastTimeSignature = new AMTimeSignature(pos, lastMeasureTime); //position not used
+					if (meterSym != null) {
+						lastTimeSignature.setSymbol(meterSym);
+					} else {
+						lastTimeSignature.setBeats(meterCount);
+						lastTimeSignature.setBeatType(meterUnit);
+					}
+					song.addTimeSignature(lastTimeSignature);
+					//System.out.println("TIME SIGNATURES "+ song.getTimeSignatures() + ", last=" + lastTimeSignature + ", at time " + lastMeasureTime);
+				}
+				keySig = getOptionalAttribute(attributesMap, "key.sig");
+				keyMode = getOptionalAttribute(attributesMap, "key.mode");
+				if (keySig != null) {
+					song.addKey(processKey(attributesMap, keySig, keyMode));
+				}
+				break;
+				//TODO groups
+			case "staffGrp":
+				label = getOptionalAttribute(attributesMap, "label");
+				if (label == null) {
+					// create a unique value
+					label = "__Part__" + song.getParts().size();
+				}
+				currentScorePart = new AMPart(label);
+				song.addPart(currentScorePart);
+				break;
+			case "staffDef": 
+				number = getOptionalAttribute(attributesMap, "n");
+				lastStaff = new AMStaff(number);
+				currentScorePart.addStaff(number, lastStaff);
+				String lines = getOptionalAttribute(attributesMap, "lines");
+				if (lines != null) {
+					lastStaff.setLines(Integer.parseInt(lines));
+				}
+				clefLine = getOptionalAttribute(attributesMap, "clef.line");
+				clefShape = getOptionalAttribute(attributesMap, "clef.shape");
+				if (clefLine != null || clefShape != null) {
+					processClef(clefLine, clefShape, getCurrentTime());
+				}
+				//TODO Instrumentos transpositores
+				keySig = getOptionalAttribute(attributesMap, "key.sig");
+				keyMode = getOptionalAttribute(attributesMap, "key.mode");
+				if (keySig != null) {
+					AMKey key = processKey(attributesMap, keySig, keyMode);
+					key.setTime(getCurrentTime());
+					song.addKey(key);
+					//TODO !!! transpositores - a veces la key es = que la de la song
+				}
+				
+				break;
+			case "measure":
+				staffCount=0;			
+				number = getOptionalAttribute(attributesMap, "n");
+				xmlid = getOptionalAttribute(attributesMap, "xml:id");
+				currentMeasure = new AMMeasure(song.getNumberOfMeasures(), lastMeasureTime, number); //TODO 0 como position?
+				xmlIDs.put(xmlid, currentMeasure);
+				song.addMeasure(currentMeasure);
+				break;
+			case "staff":
+				staffCount++;	
+				layerCount=0;
+				number = getOptionalAttribute(attributesMap, "n");
+				lastStaffNumber = encodeAndKeepStaff(number);
+				break;
+			case "layer":
+				layerCount++;
+				number = getOptionalAttribute(attributesMap, "n");
+				lastLayer = encodeLayer(number);
+				break;
+			case "beam":
+				currentBeam = new AMBeam(null);
+				break;
+			case "chord":
+				//TODO stem dir
+				xmlid = getOptionalAttribute(attributesMap, "xml:id");
+				lastChord = new AMChord(currentScorePart.getElements().size(), getCurrentTime());
+				xmlIDs.put(xmlid, lastChord);
+				dots = getOptionalAttribute(attributesMap, "dots");
+				dur = getAttribute(attributesMap, "dur");
+				figure = getFigure(dur, attributesMap);
+				lastChord.setFigure(figure);
+				if (dots != null) {
+					lastChord.setDots(Integer.parseInt(dots));
+				}			
+				lastChord.setID(xmlid);
+				lastChord.setLayer(lastLayer);
+				incrementCurrentTime(lastChord.getDuration());
+				currentScorePart.addElement(lastChord);
+				if (currentBeam != null) {
+					currentBeam.addNoteOrChord(currentNote);
+				}
+				break;
+			case "note":
+				xmlid = getOptionalAttribute(attributesMap, "xml:id");
+				dots = getOptionalAttribute(attributesMap, "dots");
+				dur = getOptionalAttribute(attributesMap, "dur");
+				String accid = getOptionalAttribute(attributesMap, "accid.ges");
+				String oct = getOptionalAttribute(attributesMap, "oct");
+				String pname = getOptionalAttribute(attributesMap, "pname");
+				
+				lastNotePitch = pname+oct+accid;
+				if (currentScorePart == null) {
+					throw new ImportException("No current score part while importing note");
+				}
+				currentNote = new AMNoteOrRest(currentScorePart.getElements().size(), getCurrentTime());
+				currentNote.setID(xmlid);
+				xmlIDs.put(xmlid, currentNote);
+				//System.out.println("XML:id = " + xmlid);
+				currentNote.setRest(false);
+				//System.out.println("Last layer= " + lastLayer);
+				currentNote.setLayer(lastLayer);
+				currentNote.setStemDirection(parseStemDir(getOptionalAttribute(attributesMap, "stem.dir")));
+				
+				String tie = getOptionalAttribute(attributesMap, "tie");
+				if (tie != null) {
+					handleTie(tie);
+				}
+				if (accid != null) {
+					AMAccidental acc = new AMAccidental();
+					acc.setAccidental(accidToAccidental(accid));
+					currentNote.setAccidental(acc);
+				}
+				if (oct != null) {
+					currentNote.setOctave(Integer.parseInt(oct));
+				}
+				currentNote.setStaff(lastStaff);
+				currentNote.setDiatonicNote(NoteNames.valueOf(pname.toUpperCase()));
+				
+				
+				if (lastChord != null) {
+					currentNote.setFigure(lastChord.getFigure());
+					currentNote.setDots(lastChord.getDots());
+					lastChord.addNote(currentNote);
+				} else {
+					if (dur == null) {
+						throw new ImportException("Cannot import note not in chord without dur");
+					}
+					figure = getFigure(dur, attributesMap);
+					currentNote.setFigure(figure);
+					if (dots != null) {
+						currentNote.setDots(Integer.parseInt(dots));
+					}
+					currentScorePart.addElement(currentNote);
+					incrementCurrentTime(currentNote.getDuration());
+					if (currentBeam != null) {
+						currentBeam.addNoteOrChord(currentNote);
+					}
+				}
+				//System.out.println("Layer: " + lastLayer + ", NOTE: " + currentNote + ", lastChord=" + lastChord);
+				
+				break;
+			case "accid":
+				AMAccidental acc = new AMAccidental();
+				accid = getOptionalAttribute(attributesMap, "accid");
+				if (accid == null) {
+					accid = getOptionalAttribute(attributesMap, "accid.ges");
+				}
+				if (accid == null) {
+					throw new ImportException("At least accid or accid.ges should be present");
+				}
+				acc.setAccidental(accidToAccidental(accid));
+				currentNote.setAccidental(acc);
+				break;
+				
+			case "rest":
+				//TODO stem dir
+				xmlid = getOptionalAttribute(attributesMap, "xml:id"); 
+				AMNoteOrRest rest = new AMNoteOrRest(currentScorePart.getElements().size(), getCurrentTime());
+				xmlIDs.put(xmlid, rest);
+				dots = getOptionalAttribute(attributesMap, "dots");
+				dur = getAttribute(attributesMap, "dur");
+				
+				figure = getFigure(dur, attributesMap);
+				rest.setRest(true);
+				//rest.setDuration(figure.getRatio()); //TODO Habrá que ver en Mensural
+				rest.setFigure(figure);
+				if (dots != null) {
+					rest.setDots(Integer.parseInt(dots));
+				}			
+				rest.setID(xmlid);
+				rest.setStaff(lastStaff);
+				rest.setLayer(lastLayer);
+				//System.out.println("Layer: " + lastLayer + ", REST: " + rest);
+				incrementCurrentTime(rest.getDuration());
+				currentScorePart.addElement(rest);
+				if (currentBeam != null) {
+					currentBeam.addNoteOrChord(currentNote);
+				}
+				
+				break;			
+			case "clef":
+				//TODO No sé para qué vale el parámetro staff aquí, cuando está dentro de uno ya...
+				clefLine = getOptionalAttribute(attributesMap, "line");
+				clefShape = getOptionalAttribute(attributesMap, "shape");				
+				tstamp = getOptionalAttribute(attributesMap, "tstamp");
+				Time clefTime;
+				if (tstamp != null) {
+					clefTime = decodeTStamp(currentMeasure, attributesMap);
+				} else {
+					clefTime = getCurrentTime();
+				}
+				//tstamp = getOptionalAttribute(attributesMap, "tstamp");
+				//double clefTime = getCurrentTime();
+				//if (tstamp != null) {
+				//	clefTime += Double.parseDouble(tstamp);
+				//}
+				processClef(clefLine, clefShape, clefTime);
+				break;
+			case "tie":
+				staffNumber = getOptionalAttribute(attributesMap, "staff");
+				pendingConnector = new PendingConnector();
+				pendingConnector.tag = element;
+				pendingConnector.measure = currentMeasure;
+				pendingConnector.startid = getAttribute(attributesMap, "startid");
+				pendingConnector.endid = getAttribute(attributesMap, "endid");
+				if (pendingConnectors.contains(pendingConnector)) {
+					throw new ImportException("Duplicating pending connector: " + pendingConnector);
+				}
+				pendingConnectors.add(pendingConnector);
+				break;		
+			case "phrase": 
+			case "slur":
+			case "hairpin":
+				staffNumber = getOptionalAttribute(attributesMap, "staff");
+				layerNumber = getOptionalAttribute(attributesMap, "layer");
+				encodeAndKeepStaff(staffNumber);
+				pendingConnector = new PendingConnector();
+				pendingConnector.staff = lastStaff;
+				pendingConnector.tag = element;
+				pendingConnector.measure = currentMeasure;
+				pendingConnector.layer = encodeLayer(layerNumber);
+				pendingConnector.tstamp = getOptionalAttribute(attributesMap, "tstamp");
+				pendingConnector.tstamp2 = getOptionalAttribute(attributesMap, "tstamp2");
+				pendingConnector.startid = getOptionalAttribute(attributesMap, "startid");
+				pendingConnector.endid = getOptionalAttribute(attributesMap, "endid");
+				if (element.equals("hairpin")) {
+					pendingConnector.content = getAttribute(attributesMap, "form");
+				}
+				if (pendingConnectors.contains(pendingConnector)) {
+					throw new ImportException("Duplicating pending connector: " + pendingConnector);
+				}
+				pendingConnectors.add(pendingConnector);
+				break;		
+			case "dynam":
+				time = decodeTStamp(currentMeasure, attributesMap);
+				//System.out.println("Time " + time + " from " + attributesMap + " in lastMeasureTime " + lastMeasureTime);
+				staffNumber = getAttribute(attributesMap, "staff");
+				lastStaffNumber = encodeAndKeepStaff(staffNumber);
+				lastDynamics = new AMDynamics(time);
+				currentStaffPlaceHolder = new AMStaffPlaceHolder(currentScorePart.getElements().size(), time);
+				currentStaffPlaceHolder.setStaff(lastStaff);			
+				currentScorePart.addElement(currentStaffPlaceHolder);
+				currentStaffPlaceHolder.addMarker(lastDynamics);
+				break;
+			/*case "meter":
+				attributesMap = getAttributes(element, saxAttributes);
+				lastTimeSignature = new AMTimeSignature(originalPosition, time)*/
+				/*case "part":
+					attributes = getAttributes(element, saxAttributes);				
+					String label = getAttribute(attributes, "label");
+					break;*/
+			}			
+		}
+	}
+	
+	private StemDirection parseStemDir(String stemDir) throws ImportException {
+		if (stemDir == null) {
+			return StemDirection.computed;
+		} else if (stemDir.equals("up")) {
+			return StemDirection.up;
+		} else if (stemDir.equals("down")) {
+			return StemDirection.down;
+		} else {
+			throw new ImportException("Invalid stem direction: " + stemDir);
+		}
+	}
+
+
+	private String encodeAndKeepStaff(String number) throws ImportException {
+		if (number == null) {
+			if (currentScorePart.getStaves().size() != 1) {
+				//TODO quizás sabiendo la posición en la lista de "staff" se podría...
+				throw new ImportException("Cannot use a staff without number for a part with several staves"); 
+			} else {
+				lastStaff = currentScorePart.getStaves().values().iterator().next();		
+			}
+			return Integer.toString(staffCount);
+		} else {
+			if (currentScorePart.getStaves() == null) {
+				throw new ImportException("The part has not staves");
+			}
+			lastStaff = currentScorePart.getStaves().get(number);
+			if (lastStaff == null) {
+				throw new ImportException("Cannot find staff with n='" + number + "'");
+			}
+		}
+		return number;
+	}
+
+
+	private String encodeLayer(String number) {
+		if (number == null) {
+			return lastStaffNumber + "_" + Integer.toString(layerCount);
+		} else {
+			return lastStaffNumber + "_" + number;
+		}
+	}
+
+
+	public Time decodeTStamp(AMMeasure measure, HashMap<String, String> attributesMap) throws ImportException {
+		String tstamp = getOptionalAttribute(attributesMap, "tstamp");
+		if (tstamp != null) {
+			return decodeTStamp(measure, tstamp);
+		}
+		throw new ImportException("Cannot get tstamp among attributes: " + attributesMap);
+	}
+	
+	public Time decodeTStamp(AMMeasure measure, String tstamp) {
+		return measure.getTime().add(new Time(Fraction.getFraction(Double.parseDouble(tstamp)-1)));	
+	}
+
+
+
+	private void processClef(String clefLine, String clefShape, Time time) {
+		lastClef = new AMClef(currentScorePart.getElements().size(), time);
+		currentScorePart.addElement(lastClef);
+		lastClef.setStaff(lastStaff);
+		if (clefLine != null) {
+			lastClef.setLine(Integer.parseInt(clefLine));
+		}
+		if (clefShape != null) {
+			lastClef.setSign(clefShape);
+		}
+		//TODO ottava bassa... (ver Aguado - test MEI importer)		
+	}
+
+
+	/**
+	 * Once a new measure is found, all time counters should be update
+	 * @return
+	 * @throws ImportException 
+	 */
+	private void updateTimesGivenMeasure() throws ImportException {
+		if (lastTimeSignature != null) {
+			double num = 0;
+			double den = 0;
+			if (lastTimeSignature.getSymbol() != null) {
+				if (lastTimeSignature.getSymbol().equals("C")) {
+					num = den = 4.0;
+				} else {
+					throw new ImportException("Unsupported time signature: " + lastTimeSignature.getSymbol());
+				}
+			} else {
+				num = Integer.parseInt(lastTimeSignature.getBeats());
+				den = Integer.parseInt(lastTimeSignature.getBeatType());
+			}
+			
+			double quarterNotes = num * 4.0 / den;
+			//System.out.println("Update: " + lastMeasureTime + " with " + quarterNotes + " in measure " + num + "/" + den);			
+			lastMeasureTime = lastMeasureTime.add(new Time(Fraction.getFraction(quarterNotes))); 		
+			
+			// now rest of time counters
+			for (Entry<String, Time> currentTimeEntry: currentTime.entrySet()) {
+				//System.out.println("Prev: " + currentTimeEntry.toString());
+				currentTimeEntry.setValue(lastMeasureTime);
+			}
+			
+		}
+	}
+
+
+	private AMKey processKey(HashMap<String, String> attributesMap, String keySig, String keyMode) throws ImportException {
+		AMKey key = new AMKey(-1, getCurrentTime());
+		String xmlid = getOptionalAttribute(attributesMap, "xml:id");
+		key.setID(xmlid);
+		if (keySig.equals("0")) {
+			key.setFifths(0);
+		} else {
+			int fifths = Integer.parseInt(keySig.substring(0, keySig.length()-1));
+			char sharpOrFlat = keySig.charAt(keySig.length()-1);
+			if (sharpOrFlat == 's') {
+				key.setFifths(fifths);
+			} else if (sharpOrFlat == 'f') {
+				key.setFifths(-fifths);
+			} else {
+				throw new ImportException("Unkown key termination, expected 's' or 'f': " + keySig);
+			}
+		}
+		key.setMode(keyMode);
+		return key;
+	}
+
+
+	private void handleTie(String type) throws ImportException {		
+		String tieCode = lastStaff.hashCode() + lastLayer + lastNotePitch;
+
+		//System.out.println("Tied: " + type + " tieCode: " + tieCode);
+		AMTie tie = currentTies.get(tieCode);
+		if (tie == null) {
+			if (type.equals("i")) {
+				tie = new AMTie(currentNote);	
+				currentNote.addConnector(tie);
+				currentTies.put(tieCode, tie);
+			} // else already inserted
+		} else {
+			if (type.equals("t")) {
+				tie.setTo(currentNote);
+				currentNote.addConnector(tie);
+				currentScorePart.addConnector(tie);				
+				currentTies.remove(tieCode);
+			} // else, tie and tied are present
+			//TODO ¿necesario "m"? -- middle
+		}
+	}
+	
+	private Accidentals accidToAccidental(String accid) throws ImportException {
+		switch (accid) {
+		case "s":
+			return Accidentals.SHARP;
+		case "f":
+			return Accidentals.FLAT;
+		case "n":
+			return Accidentals.NATURAL;
+		case "ss":
+			return Accidentals.DOUBLE_SHARP;
+		case "ff":
+			return Accidentals.DOUBLE_FLAT;
+		case "tf":
+			return Accidentals.TRIPLE_FLAT;
+		default:
+			throw new ImportException("Invalid accid: " + accid);
+		}
+	}
+
+
+	@Override
+	public void handleElementContent(String currentElement, String content) throws ImportException {
+		switch (currentElement) {
+			case "title": //TODO Gestionar esto bien (work, ....)  - lo único que es obligatorio es fileDesc
+				if (song.getWork() != null && // it is inside a work 
+					"titleStmt".equals(getParentElement())) {
+					song.getWork().setTitle(content);
+				}
+				break;
+			case "persName":
+				if (song.getWork() != null && // it is inside a work 
+				"respStmt".equals(getParentElement()) && personRole != null) {
+					song.getWork().addPerson(personRole, content);
+				}
+					break;
+			case "dynam":
+				lastDynamics.setType(content);
+				break;
+			}	
+	}
+	
+	@Override
+	protected void handleElementClose(String closingElement) throws ImportException {
+		if (importingMusic) {
+			switch (closingElement) {
+			case "chord":
+				lastChord = null;
+				break;
+			case "beam":
+				currentBeam = null;
+				break;
+			case "measure":
+				updateTimesGivenMeasure();
+				break;
+			case "music":
+				importingMusic = false;
+				break;
+			}
+		} 
+	}
+	
+	@Override
+	protected void postProcess() throws ImportException {
+		List<AMMeasure> measures = song.getMeasuresAsList();
+		//System.out.println(pendingConnectors);
+		for (PendingConnector pendingConnector: pendingConnectors) {
+			AMTimedElement fromElement;
+			//System.out.println(pendingConnector);
+			String fromStr, toStr;
+			if (pendingConnector.startid != null) {				
+				fromElement = findXMLID(pendingConnector.startid);
+				fromStr = pendingConnector.startid;
+				//System.out.println(pendingConnector.tag + ", startid=" + pendingConnector.startid + "-->" + fromElement);
+			} else if (pendingConnector.tstamp != null) {
+				fromElement = getPlaceHolderFromTStamp(pendingConnector.measure, pendingConnector.tstamp, pendingConnector.staff, pendingConnector.layer);
+				fromStr = pendingConnector.tstamp;
+			} else {
+				throw new ImportException("Missing either startid or endif for connector " + pendingConnector.tag);
+			}
+			AMTimedElement toElement;
+			if (pendingConnector.endid != null) {				
+				toElement = findXMLID(pendingConnector.endid);
+				toStr = pendingConnector.endid;
+			} else if (pendingConnector.tstamp2 != null) {
+				toElement = getPlaceHolderFromTStamp2(pendingConnector.staff, pendingConnector.layer, pendingConnector.measure, measures, pendingConnector.tstamp2);
+				toStr = pendingConnector.tstamp2;
+			} else {
+				throw new ImportException("Missing either startid or endif for connector " + pendingConnector.tag);
+			}
+			
+			switch (pendingConnector.tag) {
+				case "slur":
+				case "phrase": // TODO - deberían ser semánticamente diferentes
+					AMSlur slur = new AMSlur();
+					slur.setFrom(fromElement);
+					slur.setTo(toElement);
+					//System.out.println("Adding slur from " + fromStr + " to " + toStr);
+					//System.out.println("\t"+fromElement.hashCode() + " to " + toElement.hashCode());
+					try {
+						currentScorePart.addConnector(slur);
+					} catch (ImportException e) {
+						e.printStackTrace();
+						throw new ImportException("Duplicated slur from " + fromStr + " to " + toStr);
+					}
+					fromElement.addConnector(slur);
+					toElement.addConnector(slur);
+					break;
+				case "tie":
+					if (!(fromElement instanceof AMNoteOrRest)) { //TODO ¿acordes?
+						throw new ImportException("Expected a note and found " + fromElement.getClass());
+					}
+					if (!(toElement instanceof AMNoteOrRest)) { //TODO ¿acordes?
+						throw new ImportException("Expected a note and found " + fromElement.getClass());
+					}
+					AMNoteOrRest from = (AMNoteOrRest) fromElement;
+					AMNoteOrRest to = (AMNoteOrRest) toElement;
+					if (!from.hasConnectorTo(AMTie.class, to)) { // the tie attribute may have been already used
+						AMTie tie = new AMTie(from); 
+						tie.setTo(to);
+						from.addConnector(tie);
+						to.addConnector(tie);
+						currentScorePart.addConnector(tie);
+						//System.out.println("ADDED " + pendingConnector.startid);
+					} 
+					break;
+				case "hairpin":
+					String form = pendingConnector.content;
+					AMHairpin hairpin;
+					if (form.equals("cres")) {
+						hairpin = new AMHairpinCrescendo();
+					} else if (form.equals("dim")) {
+						hairpin = new AMHairpinDiminuendo();
+					} else {
+						throw new ImportException("Invalid hairpin type: '" + form + "'");
+					}
+					hairpin.setFrom(fromElement);
+					hairpin.setTo(toElement);
+					fromElement.addConnector(hairpin);
+					toElement.addConnector(hairpin);
+					break;					
+			}
+			//System.out.println("Slur " + fromElement + " to " + toElement);
+		}
+	}
+
+	protected AMTimedElement getPlaceHolderFromTStamp2(AMStaff staff, String layer, AMMeasure fromMeasure, List<AMMeasure> measures, String tstamp2) throws ImportException {
+		String [] strings = tstamp2.split("m\\+");
+		//System.out.println("Tstamp2 = " + tstamp2 + "->" + Arrays.toString(strings));
+		
+		int nmeasure;
+		double tstamp;
+		if (strings.length == 1) {
+			nmeasure = 0;
+			tstamp = Double.parseDouble(strings[0])-1;
+		} else if (strings.length == 2) {
+			nmeasure = Integer.parseInt(strings[0]);
+			tstamp = Double.parseDouble(strings[1])-1;
+		} else {
+			throw new ImportException("Expected format <number>m+<number> and found: " + tstamp2);
+		}
+		
+		AMMeasure destMeasure = measures.get(fromMeasure.getOriginalPosition() + nmeasure); 
+		//System.out.println("Dest measure=" + destMeasure + ", tstamp=" + tstamp);
+		Time time = destMeasure.getTime().add(new Time(Fraction.getFraction(tstamp)));
+		//System.out.println("Staff " + staff.getNumber() + ", layer=" + layer + ", Measure " + fromMeasure.getOriginalPosition() + " (n=" + fromMeasure.getNumber() + "), to " + tstamp2 + "=->" + nmeasure);
+		//System.out.println("\t->t=" + time );
+		return getOrCreatePlaceHolder(time, staff, layer);
+	}
+
+	protected AMTimedElement getPlaceHolderFromTStamp(AMMeasure measure, String tstamp, AMStaff staff, String layer) {
+		Time ts = decodeTStamp(measure, tstamp);
+		//System.out.println("TSTAMP=" + tstamp);
+		return getOrCreatePlaceHolder(ts, staff, layer); 
+	}
+
+
+	protected AMTimedElement getOrCreatePlaceHolder(Time ts, AMStaff staff, String layer) {
+		AMStaffPlaceHolder placeHolder =  placeHolders.get(ts);
+		if (placeHolder == null) {
+			placeHolder = new AMStaffPlaceHolder(currentScorePart.getElements().size(), ts);
+			placeHolder.setLayer(layer);
+			placeHolder.setStaff(staff);
+			currentScorePart.addElement(placeHolder);
+			//System.out.println("AMPH: " + placeHolder);
+			//System.out.println(Arrays.toString(Thread.currentThread().getStackTrace()));
+		}
+		return placeHolder;
+	}
+
+
+	public AMTimedElement findXMLID(String id) throws ImportException {
+		if (id.startsWith("#")) {
+			id = id.substring(1);
+		}
+		AMTimedElement result = xmlIDs.get(id);
+		if (result == null) {
+			throw new ImportException("No element with xml:id='" + id + "' found");
+		}
+		return result;
+	}
+	
+	
+}

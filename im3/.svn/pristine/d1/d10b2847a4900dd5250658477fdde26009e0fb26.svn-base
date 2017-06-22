@@ -1,0 +1,6 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+public interface IAMElementWithStaff {
+	AMStaff getStaff();
+	void setStaff(AMStaff staff);
+}

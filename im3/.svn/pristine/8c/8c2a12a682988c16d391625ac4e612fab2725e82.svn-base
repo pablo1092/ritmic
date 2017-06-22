@@ -1,0 +1,372 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.TreeMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.io.ImportException;
+
+public class AMPart {
+	
+	String ID;
+	String name;
+	/**
+	 * Staves found in element declarations such as clef
+	 */
+	TreeMap<String, AMStaff> staves;
+	/**
+	 * Layers found in element declarations such as notes
+	 */
+	//20170217 TreeSet<String> layers;
+	ArrayList<AMTimedElement> elements;
+	HashSet<IAMConnector> connectors;
+	ArrayList<AMTuplet> tuplets;
+	/**
+	 * Filled in completeMissingElements, used to detect anacrusis
+	 */
+	//20170217 private Double computedSecondMeasureTime;
+	/**
+	 * Filled in completeMissingElements, used to detect anacrusis
+	 */
+	private AMTimeSignature computedFirstTimeSignature;
+
+	public AMPart(String iD) {
+		super();
+		ID = iD;
+		elements = new ArrayList<>();
+		System.out.println("ID= " + iD);
+	}
+
+	public void addStaff(String number, AMStaff staff) throws ImportException {
+		if (staves == null) {
+			staves = new TreeMap<>();
+		} else {
+			if (staves.containsKey(number)) {
+				throw new ImportException("Staff '" + number + "' already exists");
+			}
+		}
+		staves.put(number, staff);
+	}
+	
+	public AMStaff getStaffOrNull(String number) {
+		if (staves == null) {
+			return null;
+		} else {
+			return staves.get(number);
+		}
+	}
+	//20170217 	
+	/*public void addLayer(String layer) {
+		if (layers == null) {
+			layers = new TreeSet<>();
+		}
+		layers.add(layer);
+	}
+
+	public TreeSet<String> getlayers() {
+		return layers;
+	}*/
+
+	public TreeMap<String, AMStaff> getStaves() {
+		return staves;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getID() {
+		return ID;
+	}
+
+	public void addConnector(IAMConnector c) throws ImportException {
+		if (c.getFrom() == null) {
+			throw new ImportException("The connector " + c + " should have the 'from' property set");
+		}
+		if (c.getTo() == null) {
+			throw new ImportException("The connector " + c + " should have the 'to' property set");
+		}
+		if (connectors == null) {
+			connectors = new HashSet<>();
+		}		
+		if (connectors.contains(c)) {
+			throw new ImportException("The connector already existed: " + c);
+		}		
+		connectors.add(c);
+	}
+
+	public void addTuplet(AMTuplet t) {
+		if (tuplets == null) {
+			tuplets = new ArrayList<>();
+		}
+		tuplets.add(t);
+	}
+	
+	public void mergeLastNoteWithPreviousIntoChord() throws ImportException {
+		if (elements.size() < 2) {
+			throw new ImportException("Cannot merge a list with less than 2 elements");
+		}
+		
+		if (!(elements.get(elements.size()-1) instanceof AMDurationalSymbol)) {
+			throw new ImportException("Chord element is not a note or chord");
+		}
+		if (!(elements.get(elements.size()-2) instanceof AMDurationalSymbol)) {
+			throw new ImportException("Element previous to chord is not a note or chord");
+		}
+		AMDurationalSymbol last = (AMDurationalSymbol) elements.remove(elements.size()-1);
+		AMDurationalSymbol previousLast = (AMDurationalSymbol) elements.remove(elements.size()-1);
+		
+		if (last.hasDuration() && !last.getDuration().isZero() && last.getDuration() != previousLast.getDuration()) {
+			// if last.getDuration we'll give it the previousLast duration
+			throw new ImportException("Cannot mix durations in a chord: " + previousLast.getDuration() + " with " + last.getDuration());
+		}
+		
+		if (previousLast instanceof AMChord) {
+			if (last instanceof AMChord) {
+				((AMChord) previousLast).mergeChord((AMChord) last);
+			} else {
+				((AMChord) previousLast).addNote((AMNoteOrRest) last);
+			}
+			elements.add(previousLast);
+		} else {
+			AMChord chord = new AMChord(previousLast.getOriginalPosition(), previousLast.getTime());
+			chord.setDuration(previousLast.getDuration());
+			chord.addNote((AMNoteOrRest) previousLast);
+			chord.setStaff(((AMNoteOrRest) previousLast).getStaff());
+			chord.setLayer(((AMNoteOrRest) previousLast).getLayer());
+			if (last instanceof AMChord) {
+				chord.mergeChord((AMChord) last);
+			} else {
+				chord.addNote((AMNoteOrRest) last);
+			}
+			elements.add(chord);
+		}		
+	}
+
+	public void addElement(AMTimedElement e) {
+		elements.add(e);
+	}
+
+	@Override
+	public String toString() {
+		return "AMPart [ID=" + ID + ", name=" + name + ", connectors=" + connectors + ", tuplets=" + tuplets
+				+ ", elements=" + elements + "]";
+	}
+
+	public ArrayList<AMTimedElement> getElements() {
+		return elements;
+	}
+	
+	static HashMap<Class<?>, Integer> SORT_ORDER = new HashMap<>();
+	{
+		SORT_ORDER.put(AMMeasure.class, 0);
+		SORT_ORDER.put(AMClef.class, 1);
+		SORT_ORDER.put(AMKey.class, 2);
+		SORT_ORDER.put(AMTimeSignature.class, 3);
+	}	
+	
+	public void completeMissingElements() throws ImportException {
+		if (elements == null || elements.isEmpty()) {
+			return;
+		}
+
+		//20170217 computedSecondMeasureTime = null;
+		computedFirstTimeSignature = null;
+		
+		// if staves are not defined we define them
+		if (staves == null) {
+			staves = new TreeMap<>();
+		}
+		String defaultNumber = "0";
+		
+		AMStaff firstStaff;
+		boolean staffJustCreated = false;
+		int nstaves;
+		if (staves.isEmpty()) {			
+			Logger.getLogger(AMPart.class.getName()).log(Level.INFO, "No staves defined, creating a new staff");
+
+			firstStaff = new AMStaff(defaultNumber);
+			staves.put(defaultNumber, firstStaff);
+			staffJustCreated = true;
+			nstaves = 1;
+		} else {
+			firstStaff = staves.firstEntry().getValue();
+			nstaves = staves.size();
+		}
+
+		// set the order: clef, key, time signature
+		Collections.sort(elements, new Comparator<AMTimedElement>() {
+
+			@Override
+			public int compare(AMTimedElement o1, AMTimedElement o2) {
+				int result = o1.getTime().compareTo(o1.getTime());
+				if (result != 0) {
+					return result;
+				} else {
+					Integer sortOrder1 = SORT_ORDER.get(o1.getClass());
+					Integer sortOrder2 = SORT_ORDER.get(o2.getClass());
+					if (sortOrder1 == null) {
+						if (sortOrder2 == null) {
+							result = o1.getOriginalPosition() - o2.getOriginalPosition();
+						} else {
+							result = 1;
+						}
+					} else {
+						if (sortOrder2 == null) {
+							result = -1;
+						} else {
+							result = sortOrder1 - sortOrder2;
+						}							
+					} 
+					
+				}
+				return result;
+			}
+		});
+		
+		AMClef clef = null;
+		boolean insertClef = false;
+		for (AMTimedElement element: elements) {
+			if (element instanceof IAMElementWithStaff && !(element instanceof AMStaffPlaceHolder)) {
+				IAMElementWithStaff ews = (IAMElementWithStaff) element;
+				if (ews.getStaff() == null) {
+					if (nstaves > 1 && !(element instanceof AMKey) && !(element instanceof AMTimeSignature)) {
+						throw new ImportException("Cannot guess which staff this element (" + ews +" of class " + ews.getClass() + " belongs to");
+					}
+					Logger.getLogger(AMPart.class.getName()).log(Level.FINE, "Element {0} had no staff, assigning the first one", element);
+					ews.setStaff(firstStaff);
+				} else if (staffJustCreated) {
+					throw new ImportException("It was expected that no element had a staff assigned");
+				}
+				
+				if (element instanceof AMClef) {
+					clef = (AMClef) element;
+					//System.out.println("CLEFFFFFF");
+				} else if (element instanceof IAMPitchedElement) {
+					if (clef == null) {
+						//System.out.println("NO CLEFFFFFF");
+						insertClef = true;
+					}
+				} else if (element instanceof AMTimeSignature) {
+					if (computedFirstTimeSignature == null) {
+						computedFirstTimeSignature = (AMTimeSignature) element;
+					}
+				}
+			} 
+			//20170217 else if (element instanceof AMMeasure) {
+			//20170217 if (computedSecondMeasureTime == null && element.getTime() != 0.0) {
+			//20170217 computedSecondMeasureTime = element.getTime();
+			//20170217 }
+			//20170217 }
+		}
+		
+		if (insertClef) {
+			Logger.getLogger(AMPart.class.getName()).log(Level.FINE, "Creating a new default clef at time 0 before anything");
+			
+			if (nstaves > 1) {
+				throw new ImportException("Cannot guess which staff the new clef belongs to");
+			}
+			clef = new AMClef(0, Time.TIME_ZERO);
+			clef.setLine(2);
+			clef.setSign("G");
+			clef.setStaff(firstStaff);
+			elements.add(0, clef);
+		}
+		/*//20170217 int nlayers = layers == null?0:layers.size();
+		if (nlayers == 0) {
+			for (AMTimedElement element: elements) {
+				if (element instanceof IAMElementWithLayer) {
+					((IAMElementWithLayer)element).setLayer(defaultNumber);
+				} 
+			}
+		} else {
+			String firstLayer = layers.first();
+			for (AMTimedElement element: elements) {
+				if (element instanceof IAMElementWithLayer) {
+					if (((IAMElementWithLayer) element).getLayer() == null) {
+						if (nlayers > 1) {
+							throw new ImportException("Cannot guess which layer element must be set");
+						} else {
+							((IAMElementWithLayer) element).setLayer(firstLayer);
+						}
+					}
+				}
+			}
+		}*/
+		
+		// build all layers
+		for (AMTimedElement element: elements) {
+			if (element instanceof IAMElementWithLayer) {
+				IAMElementWithLayer es = (IAMElementWithLayer)element;
+				if (es.getLayer() != null) {
+					es.getStaff().addLayer(es.getLayer());
+				}
+			}
+		}
+		
+		HashMap<AMStaff, String> firstLayerInEachStaff = new HashMap<>();
+		HashMap<AMStaff, Integer> layerCountInEachStaff = new HashMap<>();
+		for (AMStaff staff: this.staves.values()) {			
+			if (staff.getLayers() == null) {
+				throw new ImportException("Staff layers is null for staff " + staff);
+			}
+			if (staff.getLayers().isEmpty()) {
+				throw new ImportException("Staff layers is empty for staff " + staff);
+			}
+			firstLayerInEachStaff.put(staff, staff.getLayers().first());
+			layerCountInEachStaff.put(staff, staff.getLayers().size());
+		}
+		
+		for (AMTimedElement element: elements) {
+			if (element instanceof IAMElementWithLayer) {
+				if (((IAMElementWithLayer) element).getLayer() == null) {
+					AMStaff staff = ((IAMElementWithLayer)element).getStaff();
+					if (layerCountInEachStaff.get(staff) > 1) {
+						throw new ImportException("Cannot guess which layer element must be set");
+					} else {
+						String firstLayer = firstLayerInEachStaff.get(staff); 
+						if (firstLayer == null) {
+							throw new ImportException("First layer not found for staff " + staff);
+						}
+						((IAMElementWithLayer) element).setLayer(firstLayer);
+					}
+				}
+			}			
+		}
+	}
+
+	//20170217 public Double getComputedSecondMeasureTime() {
+	//20170217 return computedSecondMeasureTime;
+	//20170217 }
+
+	public AMTimeSignature getComputedFirstTimeSignature() {
+		return computedFirstTimeSignature;
+	}
+
+	/*public double getNextTime() {
+		if (elements.isEmpty()) {
+			return 0;
+		} else {
+			AMTimedElement last = elements.get(elements.size()-1);
+			if (last instanceof AMDurationalSymbol) {
+				return last.getTime() + ((AMDurationalSymbol)last).getDuration();
+			} else {
+				return last.getTime();
+			}
+		}
+	}*/
+	
+	
+	
+	
+}

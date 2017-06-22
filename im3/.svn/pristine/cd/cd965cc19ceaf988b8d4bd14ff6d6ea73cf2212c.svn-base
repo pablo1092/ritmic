@@ -1,0 +1,26 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+public class AMLyrics {
+	private String text;
+	private String syllabic;
+
+	
+	public void setText(String text) {
+		this.text = text;
+	}
+	public String getText() {
+		return text;
+	}
+	public String getSyllabic() {
+		return syllabic;
+	}
+	public void setSyllabic(String syllabic) {
+		this.syllabic = syllabic;
+	}
+	@Override
+	public String toString() {
+		return "AMLyrics [text=" + text + ", syllabic=" + syllabic + "]";
+	}
+	
+	
+}

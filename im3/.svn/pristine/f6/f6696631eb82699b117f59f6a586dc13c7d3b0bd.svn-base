@@ -1,0 +1,218 @@
+/*
+ * Copyright (C) 2013 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ *
+ * @author drizo
+ */
+public class KeySignature implements INotationTypeDependant, ITimedElementInStaff, IUniqueIDObject {
+	List<KeySignatureAccidentalElement> accidentals;
+	private Accidentals accidental;
+    NotationType notationType;
+	private Staff staff;
+	Key key;
+	String ID;
+	Time time;
+	
+	/**
+	 * For transposing instruments
+	 */
+	private Interval transpositionInterval;
+	private final Key transposedKey;
+	private int startingOctave;
+
+	public KeySignature(NotationType notationType, Key key, Staff staff){
+		this.notationType = notationType;
+		this.staff = staff;
+		this.transposedKey = key;
+		init(key);
+	}
+
+	public List<KeySignatureAccidentalElement> getAccidentals() {
+		return accidentals;
+	}
+
+	/**
+	 * 
+	 * @return Accidentals.NONE, it is a CMajor o Aminor (no accidental)
+	 */
+	public Accidentals getAccidental() {
+		return accidental;
+	}
+
+	public String toDebugString() {
+		return "KS#" + accidentals.size() + accidental.getAbbrName();
+	}
+
+
+	public void setTranspositionInterval(Interval transpositionInterval)  {
+		this.transpositionInterval = transpositionInterval;
+		this.init(transposedKey); // TODO Revisar
+	}
+
+	public Interval getTranspositionInterval() {
+		return transpositionInterval;
+	}
+
+	private void init(Key transposedKey)  {
+		this.key = transposedKey;
+		this.accidental = transposedKey.getAccidental();
+		NoteNames[] alteredNoteNames = transposedKey.getAlteredNoteNames();
+		accidentals = new ArrayList<>();
+
+		if (alteredNoteNames.length != 0) {
+			int octave = 0;
+			int previousNoteOrder = 0;
+
+			boolean nextUp = (accidental == Accidentals.SHARP);
+			int i = 1;
+
+			for (NoteNames nn : alteredNoteNames) {
+				int noteOrder = nn.getOrder() + octave * 7;
+				if (i > 1) {
+					if (nextUp) {
+						if (noteOrder < previousNoteOrder) {
+							octave++;
+						}
+					} else { // next down
+						if (noteOrder > previousNoteOrder) {
+							octave--;
+						}
+					}
+				}
+				previousNoteOrder = nn.getOrder() + octave * 7;
+				nextUp = !nextUp;
+
+				// Use the octave just as a distance in octaves from that specified by the clef for this accidental 
+				KeySignatureAccidentalElement p = new KeySignatureAccidentalElement(this, nn, octave, i); 
+
+				accidentals.add(p);
+				i++;
+			}
+		}
+	}
+
+	public Key getTransposedKey() {
+		return this.transposedKey;
+	}
+
+	@Override
+	public int hashCode() {
+		int hash = 7;
+		hash = 89 * hash + Objects.hashCode(this.getStaff());
+		hash = 89 * hash + Objects.hashCode(this.key);
+		if (this.transposedKey != null) {
+			hash = 89 * hash + Objects.hashCode(transposedKey);
+		}
+		return hash;
+	}
+
+	// It could be added graphical symbols comparison
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		final KeySignature other = (KeySignature) obj;
+		if (!Objects.equals(this.getStaff(), other.getStaff())) {
+			return false;
+		}
+		if (!Objects.equals(this.key, other.key)) {
+			return false;
+		}
+		if (!Objects.equals(transposedKey, other.transposedKey)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		if (this.accidentals.isEmpty()) {
+			return "Empty key signature";
+		} else {
+			return "Key signature with " + this.accidentals.size() + " " + this.accidental.getAbbrName();
+		}
+	}
+
+	int getStartingOctave() {
+		return startingOctave;
+	}
+
+	@Override
+	public Time getTime() throws IM3Exception {
+		return time;
+	}
+	
+	@Override
+	public boolean hasTime() {
+		return time != null;
+	}
+
+	@Override
+	public NotationType getNotationType() {
+		return notationType;
+	}
+
+	@Override
+	public Staff getStaff() {
+		return staff;
+	}
+
+	@Override
+	public void setStaff(Staff staff) {
+		this.staff = staff;
+		
+	}
+
+	public Key getKey() {
+		return key;
+	}
+
+	@Override
+	public String __getID() {
+		return ID;
+	}
+
+	@Override
+	public void __setID(String id) {
+		this.ID = id;
+		
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "KS";
+	}
+
+	public void setTime(Time time) {
+		this.time = time;
+	}
+
+}

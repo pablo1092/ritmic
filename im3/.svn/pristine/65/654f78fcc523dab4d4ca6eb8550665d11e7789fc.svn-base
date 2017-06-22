@@ -1,0 +1,86 @@
+package es.ua.dlsi.im3.core.score;
+
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+public class AtomContinuationPitch implements Comparable<AtomContinuationPitch>, IUniqueIDObject {
+	AtomPitch fromPitch;
+	AtomFigure figure;
+	String ID;
+
+	public AtomContinuationPitch(AtomFigure figure, AtomPitch fromPitch) {
+		if (figure == null || fromPitch == null) {
+			throw new IM3RuntimeException("Invalid empty figure or pitch");
+		}
+		this.figure = figure;
+		this.fromPitch = fromPitch;
+		this.fromPitch.setTiedTo(this);
+	}
+
+	public final AtomPitch getFromPitch() {
+		return fromPitch;
+	}
+
+	public final void setFromPitch(AtomPitch fromPitch) {
+		this.fromPitch = fromPitch;
+	}
+
+	@Override
+	public int compareTo(AtomContinuationPitch o) {
+		int diff = figure.compareTo(o.figure);
+		if (diff == 0) {
+			diff = fromPitch.compareTo(o.fromPitch);
+		}
+		return diff;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((figure == null) ? 0 : figure.hashCode());
+		result = prime * result + ((fromPitch == null) ? 0 : fromPitch.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AtomContinuationPitch other = (AtomContinuationPitch) obj;
+		if (figure == null) {
+			if (other.figure != null)
+				return false;
+		} else if (!figure.equals(other.figure))
+			return false;
+		if (fromPitch == null) {
+			if (other.fromPitch != null)
+				return false;
+		} else if (!fromPitch.equals(other.fromPitch))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String __getID() {
+		return ID;
+	}
+
+	@Override
+	public void __setID(String id) {
+		this.ID = id;
+		
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "N";
+	}
+
+	
+	
+	
+}

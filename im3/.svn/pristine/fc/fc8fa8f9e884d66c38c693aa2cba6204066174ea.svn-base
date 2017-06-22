@@ -1,0 +1,964 @@
+/*
+ * Copyright (C) 2016 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score.io.musicxml;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.apache.commons.lang3.math.Fraction;
+import org.xml.sax.SAXException;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+import es.ua.dlsi.im3.core.score.Accidentals;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.Clef;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.HierarchicalIDGenerator;
+import es.ua.dlsi.im3.core.score.Key;
+import es.ua.dlsi.im3.core.score.KeySignature;
+import es.ua.dlsi.im3.core.score.Measure;
+import es.ua.dlsi.im3.core.score.Mode;
+import es.ua.dlsi.im3.core.score.NotationType;
+import es.ua.dlsi.im3.core.score.NoteNames;
+import es.ua.dlsi.im3.core.score.PositionAboveBelow;
+import es.ua.dlsi.im3.core.score.ScientificPitch;
+import es.ua.dlsi.im3.core.score.ScoreLayer;
+import es.ua.dlsi.im3.core.score.ScorePart;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.SingleNote;
+import es.ua.dlsi.im3.core.score.SingleRest;
+import es.ua.dlsi.im3.core.score.Staff;
+import es.ua.dlsi.im3.core.score.StemDirection;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.TimeSignature;
+import es.ua.dlsi.im3.core.score.io.ImportFactories;
+import es.ua.dlsi.im3.core.score.io.XMLSAXImporter;
+import es.ua.dlsi.im3.core.score.staves.Pentagram;
+import es.ua.dlsi.im3.core.score.staves.PercussionStaff;
+import es.ua.dlsi.im3.io.ImportException;
+
+
+/**
+ * MusicXML implemented with SAX to improve performance over JAXB.
+ * 
+ * @author drizo
+ */
+public class MusicXMLSAXImporter extends XMLSAXImporter {
+	static final HashMap<String, Figures> FIGURES = new HashMap<>();
+	// TODO MusicXML figures, ¿normalizar en MusicXMLImporter?
+	static {
+		FIGURES.put("breve", Figures.BREVE);
+		FIGURES.put("whole", Figures.WHOLE);
+		FIGURES.put("half", Figures.HALF);
+		FIGURES.put("quarter", Figures.QUARTER);
+		FIGURES.put("eighth", Figures.EIGHTH);
+		FIGURES.put("16th", Figures.SIXTEENTH);
+		FIGURES.put("32th", Figures.THIRTY_SECOND);
+		FIGURES.put("32nd", Figures.THIRTY_SECOND);
+		FIGURES.put("64th", Figures.SIXTY_FOURTH);
+		FIGURES.put("128th", Figures.HUNDRED_TWENTY_EIGHTH);
+		FIGURES.put("256th", Figures.TWO_HUNDRED_FIFTY_SIX);
+	}
+	
+	//private ArrayDeque<AMPartGroup> partGroups;
+	ScorePart currentScorePart;
+	private Measure currentMeasure;
+	Atom currentNote;
+	Integer currentDivisions;
+	Accidentals lastAccidental;
+	HashMap<String, Staff> staffNumbers;
+	//AMTuplet lastTuplet;
+	//HashMap<String, AMBeam> currentBeams;
+	//private HashMap<String, AMSlur> currentSlurs;
+	//private HashMap<String, AMTie> currentTies;
+	String lastInsertedTieTag;  
+	//AMBeam lastBeam;
+	//AMLyrics lastLyrics;
+	KeySignature lastKey;
+	TimeSignature lastTimeSignature;
+	Clef lastClef;
+	//AMHairpin currentHairpin;
+	Time currentTime;
+	HierarchicalIDGenerator hierarchicalIdGenerator;
+	/**
+	 * Used to disambiguate symbols like duration that can be found in note or backup symbols
+	 */
+	enum eContexts {
+		eNote, eForward, eBackup, eChord, eRest, eMeter, eClef
+	}
+	eContexts context;
+	Staff lastStaff;
+	private Integer staffLines;
+	private String staffType;
+	private HashMap<String, ScorePart> partNumbers;
+	private HashMap<String, ScoreLayer> layerNumbers;
+	private int dots;
+	private Figures lastFigure;
+	//AMStaffPlaceHolder currentStaffPlaceHolder;
+	private Integer lastOctave;
+	private NoteNames lastNoteName;
+	private ScoreLayer currentLayer;
+	private String keyMode;
+	private Integer keyFifiths;
+	private String meterBeats;
+	private String meterBeatType;
+	private String meterSign;
+	private String clefSign;
+	private Integer clefLine;
+	private Integer clefOctaveChange;
+	private String lastStaffNumber;
+	private ArrayList<Atom> measureAtoms;
+	private Atom lastNote;
+	private String currentMeasureNumber;
+	private Time currentMeasureTime; 
+
+	@Override
+	protected void init() throws ParserConfigurationException, SAXException {
+		song = new ScoreSong();
+		currentDivisions = null;
+		partNumbers  = new HashMap<>();
+		hierarchicalIdGenerator = new HierarchicalIDGenerator();
+		//partGroups = new ArrayDeque<>();
+	}
+	
+
+	@Override
+	protected void doHandleOpenElement(String element, HashMap<String,String> attributes) throws ImportException {
+		String ID;
+		String type;
+		String value;
+		String number;
+		Staff staff;
+		
+		try {
+			switch (element) {
+			case "score-timewise":
+				throw new ImportException("Unsupported format: score-timewise");
+			case "score-partwise":
+				break;
+			case "work": // score-partwise.work
+				//TODOsong.setWork(new AMWork());
+				break;
+			case "movement-title": // score-partwise.movement-title
+			case "movement-number": // score-partwise.movement-number
+				//TODO if (song.getMovement() == null) {
+					//song.setMovement(new AMMovement());
+				//}
+				break;
+			case "identification":// score-partwise.identification
+				//TODO song.setIdentification(new AMIdentification());
+				break;
+			case "creator":// score-partwise.identification.creator
+				// unimplemented score-partwise.identification subelements:
+				// rights, encoding, source, relation, miscellaneous
+				value = getAttribute(attributes, "type");
+				expectedContentForElement.add(element, value);
+				break;
+			// unimplemented score-partwise subelements: defaults, credit
+			case "part-group": // score-partwise.part-list.part-group
+				// unimplemented all the other part-group subelements
+				// (group-name-display...)
+				/*type = getAttribute(attributes, "type");
+				number = getAttribute(attributes, "number");
+				if ("start".equals(type)) {
+					AMPartGroup partGroup = new AMPartGroup(number);
+					if (partGroups.isEmpty()) {
+						song.addPartGroup(partGroup);
+					} else {
+						partGroups.peek().addSubgroup(partGroup);
+					}
+					partGroups.add(partGroup);
+				} else if ("stop".equals(type)) {
+					partGroups.pop();
+				}*/
+				break;
+			case "part-list":
+				break;
+			case "score-part": // score-partwise.part-list.score-part
+				currentScorePart = song.addPart();
+				ID = getOptionalAttribute(attributes, "id");
+				if (ID != null) { 
+					partNumbers.put(ID, currentScorePart);
+				}
+				break;		
+			// unimplemented score-partwise.part-list.score-part.identification
+			case "part-name": // score-partwise.part-list.score-part.part-name
+				break; // handled in handleElementContent
+				// unimplemented rest of score-part subelements
+			case "part":
+				ID = getAttribute(attributes, "id");
+				currentScorePart = getPart(ID);
+				currentDivisions = null; 
+				lastStaff = null;
+				layerNumbers = new HashMap<>();
+				staffNumbers = new HashMap<>();
+				//currentBeams = new HashMap<>();
+				//currentSlurs = new HashMap<>();
+				//currentTies = new HashMap<>();
+				//currentHairpin = null;
+				currentTime = Time.TIME_ZERO;
+				//lastDuration = 0;
+				break;
+			case "attributes":
+				staffType = null;
+				staffLines = null;
+				lastKey = null;
+				lastClef = null;
+				lastStaff = null;
+				lastStaffNumber = null;
+				lastTimeSignature = null;
+				break;
+			case "staff-details":
+				number = getOptionalAttribute(attributes, "number");
+				if (number == null) {
+					number = "0";
+				}
+				lastStaffNumber = number;
+				break;
+			case "measure":
+				currentMeasureNumber = getOptionalAttribute(attributes, "number");
+				currentMeasureTime = currentTime;
+				measureAtoms = new ArrayList<>();
+				break;
+			case "direction":
+				currentNote = null;
+				//currentStaffPlaceHolder = new AMStaffPlaceHolder(currentScorePart.getElements().size(), currentTime);
+				//currentScorePart.addElement(currentStaffPlaceHolder);
+				break;
+			case "note":
+				//currentStaffPlaceHolder = null;	
+				lastAccidental = null;
+				lastNoteName = null;
+				lastOctave = null;
+				lastFigure = null;
+				dots = 0;
+				context = eContexts.eNote;
+				break;
+			case "backup":
+				context = eContexts.eBackup;
+				break;
+			case "forward":
+				context = eContexts.eForward;
+				break;
+			case "grace":
+				//TODO currentNote.setGraceNote(true);
+				// unimplemented attributes steal-time or make-time
+				//TODO String slash = getOptionalAttribute(attributes, "slash");
+				//TODO currentNote.setSlashedGraceNote(slash != null && slash.equals("true"));
+				break;
+			case "chord":
+				context = eContexts.eChord;
+				break;
+			case "rest":
+				context = eContexts.eRest;
+				break;
+				// not implemented display-step and octave
+			case "unpitched":
+				// unimplemented
+				showUnimplemented(element);
+				break;
+			case "cue":
+				//TODO currentNote.setCueNote(true);
+				break;
+				// element instrument not implemented
+				// editorial layer not implemented
+			case "dot":
+				dots++;
+				break; // unimplemented print-style and placement of dots
+			case "accidental":
+				/*TODO lastAccidental = new AMAccidental();
+				String cautionary = getOptionalAttribute(attributes, "cautionary");
+				if (cautionary != null) {
+					lastAccidental.setCautionary(parseYesOrNo("cautionary", cautionary));
+				}
+				String editorial = getOptionalAttribute(attributes, "editorial");
+				if (editorial != null) {
+					lastAccidental.setEditorial(parseYesOrNo("editorial", editorial));
+				}*/
+				break;
+			case "beam":
+				/*number = getAttribute(attributes, "number");
+				
+				lastBeam = currentBeams.get(number);
+				if (lastBeam == null) {
+					lastBeam = new AMBeam(number);
+					currentBeams.put(number, lastBeam);
+				} 
+				String repeater = getOptionalAttribute(attributes, "repeater");
+				if (repeater != null) {
+					lastBeam.setRepeater(parseYesOrNo("repeater", repeater));
+				}
+				lastBeam.addNoteOrChord(currentNote);
+				break;*/
+			case "tie": // duration
+				handleTie(element, attributes); // sometimes both are present
+				// unimplemented time-only			
+				break;
+			case "tied": // visual
+				handleTie(element, attributes);			
+				break;
+			case "slur":
+				/*number = getOptionalAttribute(attributes, "number");
+				if (number == null) {
+					number = "Unkown";
+				}
+				type = getAttribute(attributes, "type");
+				//System.out.println("SLur " + number + " type " + type);
+				PositionAboveBelow position;
+				String placement = getOptionalAttribute(attributes, "placement");
+				String orientation = getOptionalAttribute(attributes, "orientation");
+				if (placement == null && orientation == null) {
+					position = PositionAboveBelow.UNDEFINED;
+				} else if (orientation != null) {
+					position = getPositionFromOrientation(orientation);
+				} else {
+					// placement != null
+					position = getPositionFromPlacement(placement);				
+				}
+				
+				AMSlur slur = currentSlurs.get(number);
+				if (slur == null) {
+					slur = new AMSlur();	
+					slur.setPlacement(position);
+					if (!type.equals("start")) {
+						throw new ImportException("Unexpected slur type '" + type + "', expected 'start'");
+					}
+					currentSlurs.put(number, slur);
+					currentNote.addConnector(slur);
+					slur.setFrom(currentNote);
+				} else {
+					if (type.equals("start")) {
+						throw new ImportException("Unexpected slur type '" + type + "', expected 'stop' or 'continue'");
+					} else if (type.equals("stop")) {
+						slur.setTo(currentNote);
+						currentNote.addConnector(slur);
+						currentScorePart.addConnector(slur);		
+						currentSlurs.remove(number);
+					} else {
+						throw new ImportException("Unimplemented slur type 'continue'");
+					}				
+				}
+				*/
+				break; // unimplemented bezier...
+			case "wedge":
+				/*if (currentStaffPlaceHolder == null) {
+					throw new ImportException("Uninitialized currentStaffPlaceHolder ");
+				}
+				type = getAttribute(attributes, "type");
+				if (type.equals("stop")) {
+					if (currentHairpin == null) {
+						throw new ImportException("Missing a starting wedge");
+					} else {
+						currentStaffPlaceHolder.addConnector(currentHairpin);
+						currentHairpin.setTo(currentStaffPlaceHolder);
+						currentScorePart.addConnector(currentHairpin);
+						currentHairpin = null;
+					}
+				} else {
+					if (currentHairpin != null) {
+						throw new ImportException("Other wedge was started but not finished yet");
+					}
+					AMHairpin hairpin;
+					if (type.equals("crescendo")) {
+						hairpin = new AMHairpinCrescendo();
+					} else if (type.equals("diminuendo")) {
+						hairpin = new AMHairpinDiminuendo();
+					} else {
+						throw new ImportException("Invalid wedge type: '" + type + "'");
+					}
+					hairpin.setFrom(currentStaffPlaceHolder);
+					currentStaffPlaceHolder.addConnector(hairpin);
+					currentHairpin = hairpin;
+				}*/
+				break;
+			case "tuplet":
+				showUnimplemented(element);
+				break;
+				//TODO ornaments, technical, articulations
+			case "p":
+			case "pp":
+			case "ppp":
+			case "f":
+			case "ff":
+			case "fff":
+			case "mp":
+			case "mf":
+			case "sf":
+			case "sfp":
+			case "pppp":
+			case "ppppp":
+			case "ffff":
+			case "fffff":
+			case "sfpp":
+			case "fp":
+			case "rf":
+			case "rfz":
+			case "sfz":
+			case "sfzz":
+			case "fz":
+				/*if (currentStaffPlaceHolder != null) {
+					currentStaffPlaceHolder.addMarker(new AMDynamics(element, currentTime));
+				} else if (currentNote != null) {
+					currentNote.addMarker(new AMDynamics(element, currentTime));
+				} else {
+					throw new ImportException("No current staff holder or current note");
+				}*/
+				break;
+			case "fermata":
+				/*type = getOptionalAttribute(attributes, "type");
+				AMFermata fermata = new AMFermata();
+				fermata.setPosition(getPositionForFermata(type));
+				currentNote.addMarker(fermata);*/
+				break;
+			case "lyric":
+				/*lastLyrics = new AMLyrics();
+				number = getOptionalAttribute(attributes, "number");
+				if (number == null) {
+					number = "Unkown";
+				}			
+				currentNote.addLyrics(number, lastLyrics);*/
+				break;
+				// unimplemented note.play
+			case "cancel":
+				showUnimplemented(element);
+				break;
+			case "key":
+				break;
+			case "transpose":
+				throw new ImportException("Transpose");
+				//break;
+			case "time":
+				context = eContexts.eMeter;
+				/*String symbol = getOptionalAttribute(attributes, "symbol");
+				lastTimeSignature = new AMTimeSignature(currentScorePart.getElements().size(), currentTime);
+				currentScorePart.addElement(lastTimeSignature);
+				if (symbol != null) {
+					lastTimeSignature.setSymbol(symbol);
+				}*/
+				break;
+			case "clef":
+				context = eContexts.eClef;
+				/*number = getOptionalAttribute(attributes, "number");			
+				lastClef = new AMClef(currentScorePart.getElements().size(), currentTime);
+				currentScorePart.addElement(lastClef);
+				if (number != null) {
+					staff = getOrCreateStaff(number);
+					lastClef.setStaff(staff);
+				}*/
+				break;
+				// unimplemented: harmony, figured-bass, print, barline, grouping
+			//default:
+			//	Logger.getLogger(MusicXMLSAXImporter.class.getName()).log(Level.INFO, "Unimplemented element {0}", element);
+			}
+		} catch (Exception e) {
+			throw new ImportException(e);
+		}
+	}
+		
+
+	private ScorePart getPart(String iD) throws ImportException {
+		ScorePart part = partNumbers.get(iD);
+		if (part == null) {
+			throw new ImportException("Part with ID '" + iD + "' not found");
+		}
+		return part;
+	}
+
+
+	@Override
+	public void handleElementContent(String currentElement, String content) throws ImportException {
+		String type;
+		Figures figure;
+		//AMPartGroup partGroup;
+		try {
+			switch (currentElement) {
+			// score-partwise.work
+			case "work-number":
+				//TODO song.getWork().setNumber(content);
+				break;
+			case "work-title":
+				song.addTitle(content);
+				break;
+			case "opus":
+				//TODO song.getWork().setHrefOpus(content);
+				break;
+			case "movement-number":
+				//TODO song.getMovement().setNumber(content);
+				break;
+			case "movement-title":
+				//TODO song.getMovement().setTitle(content);
+				break;
+			case "creator":
+				type = getElementContentFor(currentElement);
+				song.addPerson(type, content);
+				//song.getIdentification().addCreator(new AMCreator(type, content));
+				break;
+			case "group-name":
+				//TODO partGroup = song.getLastPartGroup();
+				//TODO partGroup.setName(content);
+				break;
+			case "part-name":
+				if (currentScorePart == null) {
+					throw new ImportException("No current part for giving part-name");
+				}
+				currentScorePart.setName(content);
+				break;
+			case "staff-type":
+				staffType = content;
+				break;
+			case "staff-lines":
+				staffLines = Integer.parseInt(content);
+				break;
+			case "step":
+				lastNoteName = NoteNames.noteFromName(content);
+				break;
+			case "alter":
+				lastAccidental = Accidentals.alterToAccidentals(Integer.parseInt(content));
+				break;
+			case "octave":
+				lastOctave = Integer.parseInt(content);
+				break;
+			case "duration":
+				// in MusicXML the divisions are set in terms of meter denominator, not as the MIDI resolution, where the 
+				// resolution is set in terms of quarter. We normalize this fact with this constant that will be the ratio between
+				// the meter denominator and the quarter
+				if (currentDivisions == null) {
+					throw new ImportException("Divisions are not set yet");
+				}
+				int iduration = Integer.parseInt(content);
+				Time duration = new Time(Fraction.getFraction(iduration, currentDivisions));
+				/*
+				double duration = ((float) iduration) / (float) currentDivisions;
+				if (duration == 0) {
+					throw new ImportException("Invalid duration 0");
+				}*/
+				//lastDuration = duration;
+				if (context == eContexts.eNote || context == eContexts.eRest) {
+					figure = getFigureFromDuration(duration);
+					if (lastFigure != null && !figure.equals(lastFigure)) {
+						throw new ImportException("Different figures especified with dur (" + figure + ") and type ("+ lastFigure + ")");
+					}			 
+					lastFigure = figure; 
+					currentTime = currentTime.add(duration); 
+				} else if (context == eContexts.eBackup) {
+					currentTime = currentTime.substract(duration);				
+				} else if (context == eContexts.eForward) {
+					currentTime = currentTime.add(duration);
+				} else if (context != eContexts.eChord) {
+					throw new ImportException("Duration expected to be inside a note, forward or backup and is '" + (context==null?"empty":context) +"'");
+				}
+				break;
+			case "voice":
+				currentLayer = getOrCreateLayer(content);
+				break;
+			case "type":
+				figure = getFigure(content);
+				if (lastFigure != null && !figure.equals(lastFigure)) {
+					throw new ImportException("Different figures especified with dur (" + lastFigure + ") and type ("+ figure + ")");
+				}			 
+				lastFigure = figure; 
+				break;
+			case "accidental":
+				lastAccidental = decodeAccidental(content);
+				break;
+			case "actual-notes":
+				/*if (lastTuplet == null) {
+					lastTuplet = new AMTuplet();
+					currentScorePart.addTuplet(lastTuplet);
+				}
+				lastTuplet.setActualNotesCount(Integer.parseInt(content));
+				lastTuplet.addElement(currentNote);
+				lastTuplet.setFigure(currentNote.getFigure());*/
+				break;
+			case "normal-notes":
+				/*lastTuplet.setNormalNotesCount(Integer.parseInt(content));
+				if (lastTuplet.isComplete()) {
+					lastTuplet = null;
+				} //TODO Normal-type and normal-dot*/
+				break;
+			case "stem":
+				//currentNote.setStemDirection(parseStemDir(content));
+				break;
+			case "notehead":
+				//currentNote.setNoteHead(content);
+				break;
+			case "notehead-text":
+				//currentNote.setNoteHeadText(content);
+				break;
+			case "staff":
+				/*if (currentStaffPlaceHolder != null) {
+					currentStaffPlaceHolder.setStaff(staff);
+				} else if (currentNote != null) {
+					currentNote.setStaff(getOrCreateStaff(content));
+				} else {
+					throw new ImportException("Expected a note or a place holder");
+				}*/
+				break;
+			case "beam":
+				/*if (content.equals("stop")) {
+					currentBeams.remove(lastBeam.getNumber());
+					lastBeam = null; // unimplementeed forward and backward hook and continue
+				}*/
+				break;
+			case "syllabic":
+				//lastLyrics.setSyllabic(content);
+				break;
+			case "text":
+				//lastLyrics.setText(content);
+				break;
+			case "divisions": // measure.divisions
+				currentDivisions = Integer.parseInt(content);
+				break;
+			case "fifths":
+				keyFifiths = Integer.parseInt(content);
+				break;
+			case "mode":
+				keyMode = content;
+				break;
+			case "beats":
+				meterBeats = content;
+				break;
+			case "beat-type":
+				meterBeatType = content;
+				break;
+			case "sign":
+				if (context == eContexts.eMeter) {
+					meterSign = content;
+				} else if (context == eContexts.eClef) {
+					clefSign = content;
+				} else {
+					throw new ImportException("Invalid context here: " + context);
+				}
+				break;
+			case "line":
+				clefLine = Integer.parseInt(content);
+				break;			
+			case "octave-change":
+				clefOctaveChange = Integer.parseInt(content);
+				break;
+			}
+		} catch (Exception e) {
+			throw new ImportException(e);
+		}
+	}	
+
+	private void createLayer() throws IM3Exception {
+		getOrCreateLayer("-1");
+	}
+
+	
+	private ScoreLayer getOrCreateLayer(String number) throws IM3Exception {
+		ScoreLayer layer = layerNumbers.get(number);
+		if (layer == null) {
+			layer = currentScorePart.addScoreLayer();
+			layerNumbers.put(number, layer);
+		}
+		return layer;
+	}
+
+
+	private Figures getFigureFromDuration(Time duration) throws ImportException {
+		for (Figures fig: Figures.values()) {
+			if (fig.getNotationType() == NotationType.eModern && fig.getDuration().equals(duration.getExactTime())) {
+				return fig;
+			}
+		}
+		throw new ImportException("Cannot find figure for duration " + duration);
+	}
+
+
+	@Override
+	protected void handleElementClose(String closingElement) throws ImportException {
+		try {
+			switch (closingElement) {		
+			case "direction":
+				//currentStaffPlaceHolder = null;
+				break;
+			case "staff-details":
+				createStaff();
+				break;
+			case "note":
+				createNoteRestOrChord();
+				break;
+			case "key":
+				createKey();
+				break;
+			case "time":
+				TimeSignature ts = ImportFactories.processMeter(currentTime, meterSign, meterBeatType, meterBeats, lastStaff);
+				lastTimeSignature = ts;				
+				break;
+			case "clef":
+				createClef();
+				break;
+			case "attributes":
+				if (lastStaff == null || staffLines != null || staffType != null) {
+					createStaff();
+				}			
+				if (lastClef != null) {
+					lastClef.setTime(currentTime);
+					lastStaff.addClef(lastClef);
+				}
+				if (lastKey != null) {
+					lastKey.setTime(currentTime);
+					//song.addKey(currentTime, lastKey);
+					lastStaff.addKeySignature(lastKey);
+				}
+				
+				if (lastTimeSignature != null) {
+					/*Meter previousMeter = song.getMeterWithOnsetOrNull(currentTime);
+					if (previousMeter != null) {
+						if (previousMeter.equals(lastMeter)) {
+							lastMeter = previousMeter;
+						} else {
+							throw new ImportException("There was other meter (" + previousMeter + ") at time " + currentTime
+									+ " while inserting ( " + lastMeter + ")");
+						}
+					} else {
+						song.addMeter(currentTime, lastMeter);
+					}	*/
+					lastTimeSignature.setTime(currentTime);
+					lastStaff.addTimeSignature(lastTimeSignature);
+				}
+				
+				break;
+			case "measure":
+				if (lastStaff == null) {
+					createStaff(); // when none explicit has been created
+				}
+				
+				for (Atom atom: measureAtoms) {
+					currentLayer.add(atom);
+					lastStaff.addCoreSymbol(atom);
+				}
+				
+				currentMeasure = new Measure(song);
+				if (currentMeasureNumber != null) {
+					currentMeasure.setNumber(Integer.parseInt(currentMeasureNumber));
+				}
+				song.addMeasure(currentMeasureTime, currentMeasure);
+				
+				break;
+			case "part":
+				if (lastStaff == null) {
+					createStaff(); // when none explicit has been created
+				}
+				if (currentLayer == null) {
+					createLayer();
+				}
+				for (ScoreLayer layer: layerNumbers.values()) {
+					lastStaff.addLayer(layer);	
+				}
+			}
+		} catch (Exception e) {
+			throw new ImportException(e);
+		}
+	}
+
+	
+	
+	
+	private void createClef() throws ImportException {
+		lastClef = ImportFactories.createClef(NotationType.eModern, clefSign, clefLine, clefOctaveChange);
+	}
+
+
+	private void createNoteRestOrChord() throws ImportException {
+		if (context == eContexts.eRest) {
+			SingleRest rest = new SingleRest(lastFigure, dots);
+			measureAtoms.add(rest);
+		} else if (context == eContexts.eNote) {
+			ScientificPitch sp = new ScientificPitch(lastNoteName, lastAccidental, lastOctave);
+			lastNote = new SingleNote(lastFigure, dots, sp);
+			measureAtoms.add(lastNote);
+		} else if (context == eContexts.eChord) {	
+			if (lastNote.getFigures() == null || lastNote.getFigures().size() != 1) {
+				throw new IM3RuntimeException("Expected 1 figure and found " + lastNote.getFigures());
+			}
+			AtomFigure af = lastNote.getFigures().get(0);
+			if (!af.equals(lastFigure)) {
+				throw new ImportException("The previous figure of the chord (" + af.getFigure() 
+						+ ") is not the sane as the chord one (" + lastFigure + ")");
+			}
+			if (af.getDots() != dots) {
+				throw new ImportException("The previous dots of the chord (" + af.getDots() 
+						+ ") is not the sane as the chord one (" + dots + ")");
+			}
+			ScientificPitch sp = new ScientificPitch(lastNoteName, lastAccidental, lastOctave);
+			if (af.containsPitch(sp)) {
+				throw new ImportException("The chord (" + lastNote 
+						+ ") already contains the pitch (" + sp + ")");				
+			}
+			af.addOnsetPitch(sp);
+		} else {
+			throw new IM3RuntimeException("Should not enter here");
+		}
+		
+	}
+
+
+	private void createStaff() throws ImportException, IM3Exception {
+		Staff staff;
+		
+		if (staffLines == null || staffLines.equals("5")) {
+				staff = new Pentagram(song, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else if (staffLines.equals("1")) {
+				staff = new PercussionStaff(song, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else {
+				throw new ImportException("Unimplemented staves with " + staffLines + " lines");
+		}
+
+		//staffNumbers.put(number, staff);
+		//staff.setName(label);
+		//staff.setOssia(inOssia);
+		song.addStaff(staff);
+		lastStaff = staff;
+	}
+
+
+	private void createKey() throws ImportException, IM3Exception {
+		if (keyFifiths == null) {
+			throw new ImportException("Missing key fifths");
+		}
+		Mode mode;
+		if (keyMode == null) {
+			mode = Mode.MAJOR;
+		} else {
+			mode = Mode.stringToMode(keyMode);
+		}
+		lastKey = new KeySignature(null, new Key(keyFifiths, mode), lastStaff);
+	}
+
+
+	private PositionAboveBelow getPositionFromPlacement(String placement) {
+		PositionAboveBelow position;
+		if (placement == null) {
+			position = PositionAboveBelow.UNDEFINED;
+		} else if (placement.equals("below")) {
+			position = PositionAboveBelow.BELOW;
+		} else {
+			position = PositionAboveBelow.ABOVE; 
+		}
+		return position;
+	}
+
+	
+	private PositionAboveBelow getPositionFromOrientation(String orientation) throws ImportException {
+		PositionAboveBelow position;
+		if (orientation == null) {
+			position = PositionAboveBelow.UNDEFINED;
+		} else if (orientation.equals("under")) {
+			position = PositionAboveBelow.BELOW;
+		} else if (orientation.equals("over")) {
+			position = PositionAboveBelow.ABOVE; 
+		} else {
+			throw new ImportException("Undefined orientation type: '" + orientation + "'");
+		}
+		return position;
+	}
+	
+	private PositionAboveBelow getPositionForFermata(String type) {
+		PositionAboveBelow position;
+		if (type == null) {
+			position = PositionAboveBelow.UNDEFINED;
+		} else if (type.equals("upright")) {
+			position = PositionAboveBelow.ABOVE;
+		} else {
+			position = PositionAboveBelow.BELOW; 
+		}
+		return position;
+	}
+	
+	private void handleTie(String element, HashMap<String, String> attributes) throws ImportException {
+		/*FRACCIONES String type = getAttribute(attributes, "type");
+		String number = getOptionalAttribute(attributes, "number");
+		if (number == null) {
+			number = "0";
+		}
+		AMTie tie = currentTies.get(number);
+		//System.out.println("> "+ element + " " + type + " " + number + " " + currentNote);
+		if (type.equals("start")) {
+			if (tie == null) {
+				lastInsertedTieTag = element;
+				tie = new AMTie(currentNote);
+				//System.out.println("\tInserted tie " + tie.hashCode());
+				currentNote.addConnector(tie);
+				currentTies.put(number, tie);
+				//System.out.println("\tSTART: " + currentTies);				
+			} else {
+				//System.out.println("\ttie != null, start ommited-");
+			}
+		} else if (type.equals("stop") && element.equals(lastInsertedTieTag)) {
+			if (tie != null) {
+				//System.out.println("\tUsing tie " + tie.hashCode());
+				tie.setTo(currentNote);
+				currentNote.addConnector(tie);
+				currentScorePart.addConnector(tie);				
+				currentTies.remove(number);
+				//System.out.println("\tSTOP: " + currentTies);
+			} else {
+				//System.out.println("\ttie = null, stop ommited-");
+			}
+		} // if not equals skip
+		*/
+	}
+
+	Figures getFigure(String content) throws ImportException {
+		Figures figure = FIGURES.get(content);
+		if (figure == null) {
+			throw new ImportException("Unknown figure type: " + content);
+		}
+		return figure;
+	}
+
+
+	private StemDirection parseStemDir(String stemDir) throws ImportException {
+		if (stemDir == null) {
+			return StemDirection.computed;
+		} else if (stemDir.equals("up")) {
+			return StemDirection.up;
+		} else if (stemDir.equals("down")) {
+			return StemDirection.down;
+		} else {
+			throw new ImportException("Invalid stem direction: " + stemDir);
+		}
+	}
+	private Accidentals decodeAccidental(String content) throws ImportException {
+		switch (content) {
+		case "sharp":
+			return Accidentals.SHARP;
+		case "flat":
+			return Accidentals.FLAT;
+		case "natural":
+			return Accidentals.NATURAL;
+		case "double-sharp":
+			return Accidentals.DOUBLE_SHARP;
+		case "double-flat":
+			return Accidentals.DOUBLE_FLAT;
+		case "triple-flat":
+			return Accidentals.TRIPLE_FLAT;
+		default:
+			throw new ImportException("Invalid accidental: " + content);
+		}
+	}
+	
+}

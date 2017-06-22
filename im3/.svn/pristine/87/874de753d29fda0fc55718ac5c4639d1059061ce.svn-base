@@ -1,0 +1,45 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * From MusicXML. Extended to elements from MEI
+ * @author drizo
+ */
+public class AMIdentification {
+	AMMultipleTypedText rights;
+	AMMultipleTypedText relation;
+	ArrayList<AMCreator> creators;
+	
+	public AMMultipleTypedText getRights() {
+		return rights;
+	}
+	public void setRights(AMMultipleTypedText rights) {
+		this.rights = rights;
+	}
+	public AMMultipleTypedText getRelation() {
+		return relation;
+	}
+	public void setRelation(AMMultipleTypedText relation) {
+		this.relation = relation;
+	}
+	public void addCreator(AMCreator amCreator) {
+		if (creators == null) {
+			creators = new ArrayList<>();
+		}
+		creators.add(amCreator);
+		
+	}
+	public List<AMCreator> getCreators() {
+		return creators;
+	}
+	
+	@Override
+	public String toString() {
+		return "AMIdentification [creators=" + creators + ", rights=" + rights + ", relation=" + relation + ", creators="
+				+ creators + "]";
+	}
+	
+	
+}

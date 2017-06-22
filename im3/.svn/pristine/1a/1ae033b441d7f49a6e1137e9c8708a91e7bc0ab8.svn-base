@@ -1,0 +1,218 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import es.ua.dlsi.im3.core.score.NoteNames;
+import es.ua.dlsi.im3.core.score.StemDirection;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.io.ImportException;
+
+public class AMNoteOrRest extends AMDurationalSymbol implements IAMPitchedElement {
+	ArrayList<IAMMarker> markers;
+	
+	boolean graceNote;
+	boolean slashedGraceNote;
+	boolean rest;
+	boolean cueNote;
+	NoteNames diatonicNote;
+	/**
+	 * -2 = double flat, -1 flat, 0 natural, 1 sharp, 2 double sharp
+	 */
+	Integer alteration;
+	AMAccidental accidental;	
+	int octave;
+	StemDirection stemDirection;
+	/**
+	 * Oval...
+	 */
+	String noteHead;
+	/**
+	 * Text shown inside the note head for tasks such as educational music 
+	 */
+	String noteHeadText;
+	
+	HashMap<String, AMLyrics> lyrics;
+	
+	public AMNoteOrRest(int originalPosition, Time time) {
+		super(originalPosition, time);
+	}
+	
+	public boolean isGraceNote() {
+		return graceNote;
+	}
+
+	public void setGraceNote(boolean graceNote) {
+		this.graceNote = graceNote;
+	}
+
+	public boolean isSlashedGraceNote() {
+		return slashedGraceNote;
+	}
+
+	public void setSlashedGraceNote(boolean slashedGraceNote) {
+		this.slashedGraceNote = slashedGraceNote;
+	}
+
+	public boolean isRest() {
+		return rest;
+	}
+
+	public void setRest(boolean rest) {
+		this.rest = rest;
+	}
+
+	public NoteNames getDiatonicNote() {
+		return diatonicNote;
+	}
+
+	public void setDiatonicNote(NoteNames noteNames) {
+		this.diatonicNote = noteNames;
+	}
+
+	public Integer getAlteration() {
+		return alteration;
+	}
+
+	public void setAlteration(Integer alteration) {
+		this.alteration = alteration;
+	}
+
+	public int getOctave() {
+		return octave;
+	}
+
+	public void setOctave(int octave) {
+		this.octave = octave;
+	}
+
+	public boolean isCueNote() {
+		return cueNote;
+	}
+
+	public void setCueNote(boolean cueNote) {
+		this.cueNote = cueNote;
+	}
+
+	public StemDirection getStemDirection() {
+		return stemDirection;
+	}
+
+	public void setStemDirection(StemDirection stemDirection) {
+		this.stemDirection = stemDirection;
+	}
+
+	public String getNoteHead() {
+		return noteHead;
+	}
+
+	public void setNoteHead(String noteHead) {
+		this.noteHead = noteHead;
+	}
+
+	public String getNoteHeadText() {
+		return noteHeadText;
+	}
+
+	public void setNoteHeadText(String noteHeadText) {
+		this.noteHeadText = noteHeadText;
+	}
+	
+	public void addMarker(IAMMarker d) {
+		if (markers == null) {
+			markers = new ArrayList<>();
+		}
+		markers.add(d);
+	}
+
+	public void addLyrics(String number, AMLyrics l) {
+		if (lyrics == null) {
+			lyrics = new HashMap<>();
+		}
+		lyrics.put(number, l);
+	}
+	
+	public AMLyrics getLyrics(String number) throws ImportException {
+		AMLyrics result = lyrics.get(number);
+		if (result == null) {
+			throw new ImportException("No lyrics with number '" + number + "'");
+		}
+		return result;
+	}
+	
+	public AMAccidental getAccidental() {
+		return accidental;
+	}
+
+	public void setAccidental(AMAccidental accidental) {
+		this.accidental = accidental;
+	}
+
+
+	public ArrayList<IAMMarker> getMarkers() {
+		return markers;
+	}
+
+	public HashMap<String, AMLyrics> getLyrics() {
+		return lyrics;
+	}
+
+	@Override
+	public String toString() {
+		return "AMNoteOrRest [time=" + time + ", duration=" + duration + " staff=" + staff + ", layer=" + layer + ", figure=" + figure + ", dots=" + dots + ", rest="
+				+ rest + ", diatonicNote=" + diatonicNote + ", octave=" + octave + ", alteration=" + alteration
+				+ ",accidental="+accidental + ", lyrics=" + lyrics + ", markers=" + markers + ", graceNote="
+				+ graceNote + ", slashedGraceNote=" + slashedGraceNote + ", cueNote=" + cueNote + ", stemDirection="
+				+ stemDirection + ", noteHead=" + noteHead + ", noteHeadText=" + noteHeadText + "]";
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + ((accidental == null) ? 0 : accidental.hashCode());
+		result = prime * result + ((alteration == null) ? 0 : alteration.hashCode());
+		result = prime * result + (cueNote ? 1231 : 1237);
+		result = prime * result + ((diatonicNote == null) ? 0 : diatonicNote.hashCode());
+		result = prime * result + (graceNote ? 1231 : 1237);
+		result = prime * result + octave;
+		result = prime * result + (rest ? 1231 : 1237);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMNoteOrRest other = (AMNoteOrRest) obj;
+		if (accidental == null) {
+			if (other.accidental != null)
+				return false;
+		} else if (!accidental.equals(other.accidental))
+			return false;
+		if (alteration == null) {
+			if (other.alteration != null)
+				return false;
+		} else if (!alteration.equals(other.alteration))
+			return false;
+		if (cueNote != other.cueNote)
+			return false;
+		if (diatonicNote != other.diatonicNote)
+			return false;
+		if (graceNote != other.graceNote)
+			return false;
+		if (octave != other.octave)
+			return false;
+		if (rest != other.rest)
+			return false;
+		return true;
+	}
+
+
+
+	
+}

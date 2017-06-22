@@ -1,0 +1,76 @@
+/*
+ * Copyright (C) 2013 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package es.ua.dlsi.im3.core.score;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ *
+ * @author drizo
+ */
+public class TimeSignature implements ITimedElement, INotationTypeDependant, ISymbolInLayer {
+    Meter meter;
+    NotationType notationType;
+	private Staff staff;
+	StaffLayer layer;
+	
+    public TimeSignature(NotationType notationType, Meter meter, Staff s) {
+    		this.notationType = notationType;
+    		this.meter = meter;
+    		this.staff = s;
+    		this.layer = staff.getBackgroundLayer();
+    }
+
+    @Override
+    public Time getTime() throws IM3Exception {
+    		return meter.getTime();
+    }
+    
+	@Override
+	public boolean hasTime() {
+		return meter.hasTime();
+	}    
+    
+    @Override
+    public NotationType getNotationType() {
+    		return notationType;
+    }
+    
+    public Staff getStaff() {
+    		return staff;
+    }
+
+	@Override
+	public StaffLayer getLayer() {
+		return layer;
+	}
+
+	@Override
+	public void setLayer(StaffLayer staffLayer) {
+		this.layer = staffLayer;		
+	}
+
+	public Meter getMeter() {
+		return meter;
+	}
+
+	public void setTime(Time time) {
+		meter.setTime(time);
+	}
+
+}

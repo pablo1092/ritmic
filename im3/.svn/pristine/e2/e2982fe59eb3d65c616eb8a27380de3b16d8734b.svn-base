@@ -1,0 +1,28 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+public class AMTie implements IAMConnector {
+	private AMDurationalSymbol from;
+	private AMDurationalSymbol to;
+	public AMTie(AMDurationalSymbol from) {
+		super();
+		this.from = from;
+	}
+	public AMDurationalSymbol getFrom() {
+		return from;
+	}
+	public void setFrom(AMDurationalSymbol from) {
+		this.from = from;
+	}
+	public AMDurationalSymbol getTo() {
+		return to;
+	}
+	public void setTo(AMDurationalSymbol to) {
+		this.to = to;
+	}
+	@Override
+	public String toString() {
+		return "AMTie";
+	}
+	
+	
+}

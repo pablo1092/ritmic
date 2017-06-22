@@ -1,0 +1,1426 @@
+package es.ua.dlsi.im2.io;
+
+import es.ua.dlsi.im2.io.antlr.ErrorListener;
+import es.ua.dlsi.im2.io.antlr.GrammarParseRuntimeException;
+import es.ua.dlsi.im2.io.antlr.ParseError;
+import es.ua.dlsi.im2.io.kern.*;
+import es.ua.dlsi.im2.model.Accidentals;
+import es.ua.dlsi.im2.model.Bar;
+import es.ua.dlsi.im2.model.ChordType;
+import es.ua.dlsi.im2.model.Degree;
+import es.ua.dlsi.im2.model.Harmony;
+import es.ua.dlsi.im2.model.IM2Exception;
+import es.ua.dlsi.im2.model.IM2RuntimeException;
+import es.ua.dlsi.im2.model.Key;
+import es.ua.dlsi.im2.model.Meter;
+import es.ua.dlsi.im2.model.Mode;
+import es.ua.dlsi.im2.model.NoMeterException;
+import es.ua.dlsi.im2.model.NoteNames;
+import es.ua.dlsi.im2.model.PitchClass;
+import es.ua.dlsi.im2.model.PitchClasses;
+import es.ua.dlsi.im2.model.ScientificPitch;
+import es.ua.dlsi.im2.model.score.ScoreFigureAndDots;
+import es.ua.dlsi.im2.model.score.ScoreDurationalSymbol;
+import es.ua.dlsi.im2.model.score.ScoreNonRest;
+import es.ua.dlsi.im2.model.score.ScorePart;
+import es.ua.dlsi.im2.model.score.ScoreVoice;
+import es.ua.dlsi.im2.model.score.Tuplet;
+import es.ua.dlsi.im2.model.score.modern.FiguresModern;
+import es.ua.dlsi.im2.model.score.modern.ModernChord;
+import es.ua.dlsi.im2.model.score.modern.ModernNote;
+import es.ua.dlsi.im2.model.score.modern.ModernRest;
+import es.ua.dlsi.im2.model.score.modern.ModernSong;
+import es.ua.dlsi.im2.notation.NotationType;
+import es.ua.dlsi.im2.notation.StaffAnalysisLayer;
+import es.ua.dlsi.im2.notation.StaffLayer;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.antlr.v4.runtime.ANTLRInputStream;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.ParseTreeWalker;
+
+/**
+ * It imports the root voice as a new part
+ *
+ * @author drizo
+ */
+public class KernImporter implements IScoreSongImporter<ModernSong> {
+
+	public KernImporter() {
+	}
+
+	@Override
+	public ModernSong importSong(InputStream is) throws ImportException {
+		throw new UnsupportedOperationException("Not supported yet."); // To
+																		// change
+																		// body
+																		// of
+																		// generated
+																		// methods,
+																		// choose
+																		// Tools
+																		// |
+																		// Templates.
+	}
+
+	static class VoiceTemp {
+
+		ArrayList<ScoreDurationalSymbol> tupletElements = new ArrayList<>();
+		ArrayList<Integer> tupletDurations = new ArrayList<>();
+		boolean inTuplet;
+		int mcdTupleElementDuration; // greatest common divisor
+		int mcm; // lowest common multiple
+		int tupletDots;
+		private int lastDuration;
+	}
+
+	public static class Loader extends kernBaseListener {
+
+		ModernSong scoreSong;
+		int currentSpineIndex = -1; // incremented in enterField
+		int currentRow = 0; // incremented in enterRecord - start from 1
+		// long currentTime = 0;
+		ScoreFigureAndDots<FiguresModern> lastDuration = null;
+		ScoreVoice currentVoice; // TODO De momento solo tengo una voice por
+									// part
+		HashMap<Integer, ScoreVoice> spines = new HashMap<>();
+		//// TODO refectorizacion HashMap<Integer, ScoreStaff> stavesByNumber =
+		//// new HashMap<>();
+		// TODO refectorizacion HashMap<Integer, ScoreStaff> stavesForSpines =
+		//// new HashMap<>();
+		private ScorePart globalPart;
+		private ScorePart rootPart;
+		Meter currentMeter;
+		// ArrayList<ScoreSoundingElement> measurescorenotes = new
+		// ArrayList<>();
+		Bar currentMeasure;
+		private int harmSpine = -1;
+		private int rootSpine = -1;
+		private Mode keyChangeMode;
+		private String keyString;
+		private int octaveModif;
+		private String noteName;
+		private VoiceTemp currentVoiceTemp;
+		private ModernNote lastRootNote;
+		private VoiceTemp rootVoiceTemp;
+		private ScoreNonRest lastNoteOrChord;
+		private Harmony lastHarmony;
+		private long lastTime;
+		// TODO refactorización private ScoreStaff rootStaff;
+
+		Loader(ModernSong song) {
+			try {
+				scoreSong = song;
+				globalPart = new ScorePart(scoreSong, 0);
+				scoreSong.addPart(globalPart);
+				prepareFiguresForTuplet();
+			} catch (IM2Exception ex) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+				throw new GrammarParseRuntimeException(ex);
+			}
+		}
+
+		boolean inHarmSpine() {
+			return currentSpineIndex == this.harmSpine;
+		}
+
+		boolean inRootSpine() {
+			return currentSpineIndex == this.rootSpine;
+		}
+
+		final boolean isRootBeforeHarmonies() {
+			return rootSpine < harmSpine;
+		}
+
+		/**
+		 * greatest common divisor (euclides)
+		 *
+		 * @return
+		 */
+		private int gcd(int a, int b) {
+			// ArithmeticUtils.gcd(dur, mcdTupleElementDuration);
+			if (b == 0) {
+				return a;
+			} else {
+				return gcd(b, a % b);
+			}
+		}
+
+		private int mcm(int a, int b) {
+			int m = gcd(a, b);
+			return (m * (a / m) * (b / m));
+		}
+
+		/*
+		 * private void setRootNotesToHarmonies() { if (rootSpine != -1 &&
+		 * harmSpine != -1) {
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+		 * "Setting root values to harmonies TODO");//TODO } }
+		 */
+		HashMap<Integer, VoiceTemp> voiceTemp;
+		TreeSet<Double> figureBeatsSortedForTupletProcessing;
+		private boolean inChord;
+		private ModernChord chord;
+
+		@Override
+		public void enterHeader(kernParser.HeaderContext ctx) {
+			super.enterHeader(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Enter Header {0}", ctx.getText());
+
+			voiceTemp = new HashMap<>();
+			currentSpineIndex = 0;
+			/*
+			 * int nspines = ctx.getChildCount();
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Found {0} spines", nspines); voiceTemp = new ArrayList<>(); for
+			 * (int i=0; i<nspines; i++) { spines.add(new ScoreVoice(scoreSong,
+			 * i)); voiceTemp.add(new VoiceTemp()); }
+			 */
+		}
+
+		@Override
+		public void enterHeaderKern(kernParser.HeaderKernContext ctx) {
+			try {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Kern {0}", ctx.getText());
+				// spines.put(currentSpineIndex, new ScoreVoice(scoreSong,
+				// currentSpineIndex));
+				// spines.put(currentSpineIndex, new ScoreVoice(globalPart,
+				// currentSpineIndex));
+				/// ScoreVoice v = new ScoreVoice(tempPart, currentSpineIndex);
+				/// tempPart.addVoice(v);
+				/// spines.put(currentSpineIndex, v);
+				voiceTemp.put(currentSpineIndex, new VoiceTemp());
+				if (spines.get(currentSpineIndex) == null) {
+					ScoreVoice v = new ScoreVoice(globalPart, currentSpineIndex);
+					globalPart.addVoice(v);
+					spines.put(currentSpineIndex, v);
+				}
+				currentSpineIndex++;
+			} catch (IM2Exception ex) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+				throw new GrammarParseRuntimeException(ex);
+			}
+		}
+
+		@Override
+		public void enterHeaderHarm(kernParser.HeaderHarmContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Harm {0}", ctx.getText());
+			if (harmSpine != -1) {
+				throw new GrammarParseRuntimeException("Cannot set two harm spines, previous was " + harmSpine
+						+ ", and new one is " + currentSpineIndex + " at row " + currentRow);
+			}
+			harmSpine = currentSpineIndex;
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Setting harm spine in {0}", harmSpine);
+			currentSpineIndex++;
+		}
+
+		@Override
+		public void enterHeaderRoot(kernParser.HeaderRootContext ctx) {
+			throw new UnsupportedOperationException("TODO refactorizacion");
+			/*
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "Root {0}", ctx.getText()); if (rootSpine != -1) { throw new
+			 * GrammarParseRuntimeException(
+			 * "Cannot set two root spines, previous was " + rootSpine +
+			 * ", and new one is " + currentSpineIndex + " at row " +
+			 * currentRow); }
+			 * 
+			 * try { rootPart = this.scoreSong.addAnalysisPart("Analysis / Root"
+			 * ); //ScoreVoice v = new ScoreVoice(rootPart, currentSpineIndex);
+			 * spines.put(currentSpineIndex, this.scoreSong.getAnalysisVoice());
+			 * //rootStaff = rootPart.addStaff(); rootStaff =
+			 * this.scoreSong.getAnalysisStaff();
+			 * stavesForSpines.put(currentSpineIndex, rootStaff); } catch
+			 * (IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseRuntimeException(ex); }
+			 * rootVoiceTemp = new VoiceTemp(); voiceTemp.put(currentSpineIndex,
+			 * new VoiceTemp()); rootSpine = currentSpineIndex;
+			 * currentSpineIndex++;
+			 */
+		}
+
+		@Override
+		public void enterRecord(kernParser.RecordContext ctx) {
+			super.enterRecord(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Record {0}", ctx.getText());
+			currentRow++;
+
+			/*
+			 * if (lastDuration != null) { currentTime +=
+			 * lastDuration.computeDurationFromFigureAndDots(scoreSong.
+			 * getResolution()); }
+			 */
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Record #{0}", currentRow);
+			currentSpineIndex = -1;
+			lastDuration = null;
+		}
+
+		@Override
+		public void enterField(kernParser.FieldContext ctx) {
+			super.enterField(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Entering field {0}", ctx.getText());
+			currentSpineIndex++;
+			currentVoiceTemp = this.getCurrentVoiceTemp();
+
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Spine #{0}", currentSpineIndex);
+			// currentScorePart = scoreSong.getPart(currentPartIndex);
+			if (!inHarmSpine()) {
+				currentVoice = spines.get(currentSpineIndex);
+			} else {
+				currentVoice = null;
+			}
+		}
+
+		/*
+		 * @Override public void exitRepeatToken(kernParser.RepeatTokenContext
+		 * ctx) { super.exitRepeatToken(ctx);
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+		 * "Repeat token {0}", ctx.getText()); ScoreSoundingElement lastToken =
+		 * currentVoice.getScoreSoundingElements().last(); if (lastToken ==
+		 * null) { throw new GrammarParseException(
+		 * "Cannot repeat an empty token in row #" + currentRow + ", spine #" +
+		 * currentSpineIndex); } //ScoreSoundingElement repeated =
+		 * (ScoreSoundingElement) lastToken.clone(); ScoreSoundingElement
+		 * repeated; if (lastToken instanceof Rest) { try { repeated = new
+		 * Rest(currentVoice, getCurrentTime(), (ScoreFigureAndDots)
+		 * lastToken.getDurationInTicks().clone()); // automaticly added } catch
+		 * (IM2Exception ex) {
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+		 * null, ex); throw new GrammarParseException(
+		 * "Repetition (cloning) of class " + lastToken.getClass().toString() +
+		 * " not supported"); } } else if (lastToken instanceof ScoreNote) { try
+		 * { repeated = new ScoreNote(currentVoice, getCurrentTime(),
+		 * ((ScoreNote) lastToken).getPitchAndOctave().clone(), (ScoreFigureAndDots)
+		 * lastToken.getDurationInTicks().clone()); // automaticly added } catch
+		 * (IM2Exception ex) {
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+		 * null, ex); throw new GrammarParseException(
+		 * "Repetition (cloning) of class " + lastToken.getClass().toString() +
+		 * " not supported"); } } else { throw new GrammarParseException(
+		 * "Repetition (cloning) of class " + lastToken.getClass().toString() +
+		 * " not supported"); }
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+		 * "Added repeated element {0}", repeated.toString()); }
+		 */
+		@Override
+		public void exitInterpretation(kernParser.InterpretationContext ctx) {
+			super.exitInterpretation(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Interpretation {0}", ctx.getText());
+		}
+
+		@Override
+		public void exitMordent(kernParser.MordentContext ctx) {
+			super.exitMordent(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Mordent {0}", ctx.getText());
+			// TODO Mordente no implementado
+		}
+
+		///
+		/*
+		 * ScorePart getCurrentPart() { ScorePart part = currentVoice.getPart();
+		 * if (part == this.tempPart) { //currentPart =
+		 * scoreSong.addPart(number); if (globalPart == tempPart) {
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+		 * "Creating global part"); globalPart = scoreSong.addPart(); } part =
+		 * globalPart;
+		 * //Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+		 * "Creating part {0}", number);
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+		 * "Associating spine {0} to global part", new
+		 * Object[]{currentSpineIndex}); try {
+		 * //part.addVoice(currentSpineIndex, currentVoice); if
+		 * (currentVoice.getNumber() != currentSpineIndex) { throw new
+		 * GrammarParseRuntimeException("Spine index != currentVoice.number");
+		 * // Beniarbeig } tempPart.removeVoice(currentVoice);
+		 * part.addVoice(currentVoice); currentVoice.setPart(part); //
+		 * Beniarbeig 2014 } catch (IM2Exception ex) {
+		 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+		 * null, ex); throw new GrammarParseRuntimeException(ex); } } return
+		 * part; }
+		 */
+		// TODO refactorización
+		/*
+		 * ScoreStaff addStaff(int number) throws IM2Exception { ScoreStaff
+		 * staff; if (currentSpineIndex == rootSpine) { staff =
+		 * rootPart.addStaff(number); } else { staff =
+		 * globalPart.addStaff(number); }
+		 * 
+		 * //staff = part.addStaff(number); stavesByNumber.put(number, staff);
+		 * stavesForSpines.put(currentSpineIndex, staff); return staff; }
+		 */
+		@Override
+		public void exitStaff(kernParser.StaffContext ctx) {
+			/*
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "Staff {0}", ctx.getText());
+			 * 
+			 * int number = new Integer(ctx.NUMBER().getText()); try {
+			 * ScoreStaff staff = stavesByNumber.get(number); if (staff == null)
+			 * { Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Creating staff {0}", new Object[]{number}); addStaff(number); }
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Associating spine {0} to staff {1}", new
+			 * Object[]{currentSpineIndex, number}); } catch (IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseRuntimeException(ex); }
+			 */
+			// TODO - ignoro de momento la información de staff - volverla a
+			// poner
+		}
+
+		@Override
+		public void exitClef(kernParser.ClefContext ctx) {
+			throw new UnsupportedOperationException("TODO refactorización");
+			/*
+			 * try { super.exitClef(ctx); ScoreClef clef; switch (ctx.getText())
+			 * { case "G2": clef = ScoreClef.G2; break; case "F4": clef =
+			 * ScoreClef.F4; break; case "C3": clef = ScoreClef.C3; break; case
+			 * "C4": clef = ScoreClef.C4; break; case "G1": clef =
+			 * ScoreClef.G2_OTTAVA_BASSA; break; case "Gv2": clef =
+			 * ScoreClef.G2_QUINDICESIMA_BASSA; break; default: throw new
+			 * RuntimeException("Invalid clef: " + ctx.getText()); //TODO Logger
+			 * }
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "Clef {0}", ctx.getText());
+			 * 
+			 * ScoreStaff staff = getStaff(currentSpineIndex);
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Setting clef {0} to staff {1}", new Object[]{clef.toString(),
+			 * staff.getNumber()});
+			 * 
+			 * long currentTime = getCurrentTime(); ScoreClef otherClef =
+			 * staff.getClefWithOnset(currentTime); if (otherClef != null) { if
+			 * (!otherClef.equals(clef)) { throw new
+			 * GrammarParseRuntimeException("There is already a clef " +
+			 * otherClef.toString() + " at time " + currentTime +
+			 * " while inserting " + clef.toString()); } } else {
+			 * staff.addClef(currentTime, clef); //staff.setClef(clef);
+			 * 
+			 * }
+			 * 
+			 * //TODO EL AGRUPAMIENTO SE HACE CON icInstrument creo } catch
+			 * (IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseRuntimeException(ex); }
+			 */
+		}
+
+		int ksNotesCount = 0;
+
+		@Override
+		public void enterKeysignature(kernParser.KeysignatureContext ctx) {
+			super.exitKeysignature(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Beginning a key signature",
+					ctx.getText());
+		}
+
+		long getCurrentTime() {
+			// if (currentVoice == null || currentVoice.isEmpty()) {
+			// //currentVoice.getScoreSoundingElements().isEmpty()) {
+			/*
+			 * if (scoreSong.isAnacrusis()) { return
+			 * scoreSong.getAnacrusisOffset(); } else { return 0; }
+			 */
+			if (inHarmSpine()) {
+				return lastTime;
+			} else {
+				try {
+					// ScoreDurationalElement<FiguresModern> s =
+					// currentVoice.getDurationalSymbolsAsSortedVector().get(currentVoice.getDurationalSymbolsAsSortedVector().size()-1);
+					if (currentVoice.isEmpty()) {
+						lastTime = scoreSong.getAnacrusisOffset();
+					} else {
+						ScoreDurationalSymbol<FiguresModern> s = currentVoice.getLastDurationalSymbol();
+						// ModernElementWithDuration s =
+						// currentVoice.getScoreSoundingElements().last();
+						lastTime = s.getTime() + s.getDurationInTicks();
+					}
+					return lastTime;
+				} catch (IM2Exception ex) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+					throw new GrammarParseRuntimeException(ex);
+				}
+			}
+		}
+
+		@Override
+		public void exitKeysignature(kernParser.KeysignatureContext ctx) {
+			super.exitKeysignature(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Key Signature {0}", ctx.getText());
+			try {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.INFO,
+						"Currently all key signatures are being encoded as UNKOWN");
+
+				long currentTime = getCurrentTime();
+				Key ks;
+				if (ctx.keysignatureNote().isEmpty()) {
+					ks = new Key(PitchClasses.C.getPitchClass(), Mode.UNKNOWN); // mode
+																				// uknown
+					// ks = new Key(currentTime, PitchClasses.C.getPitchClass(),
+					// Mode.UNKNOWN); // mode uknown
+				} else {
+					// NoteNames nn =
+					// NoteNames.valueOf(ctx.keysignatureNote().get(0).LETTER_NOTES_LOWERCASE().getText().toUpperCase());
+					NoteNames nn = NoteNames
+							.valueOf(ctx.keysignatureNote().get(0).noteNameLowerCase().getText().toUpperCase());
+					if (nn == NoteNames.F) {
+						// sharps
+						ks = new Key(ctx.keysignatureNote().size(), Mode.UNKNOWN.name());
+					} else if (nn == NoteNames.B) {
+						// flats
+						ks = new Key(-ctx.keysignatureNote().size(), Mode.UNKNOWN.name());
+					} else {
+						throw new GrammarParseRuntimeException("Unimplemented key signature support: " + ctx.getText());
+					}
+					// TODO Comprobar el contenido
+				}
+
+				Key otherKey = scoreSong.getKeyWithOnsetOrNull(currentTime);
+				if (otherKey != null) {
+					if (!otherKey.equals(ks)) {
+						throw new GrammarParseRuntimeException("There is already a key " + otherKey.toString()
+								+ " at time " + currentTime + " while inserting " + ks.toString());
+					}
+				} else {
+					scoreSong.addKey(currentTime, ks);
+				}
+			} catch (IM2Exception ex) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+				throw new GrammarParseRuntimeException(ex);
+			}
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Recognized key signature with {0} notes",
+					ksNotesCount);
+
+		}
+
+		@Override
+		public void exitKeysignatureNote(kernParser.KeysignatureNoteContext ctx) {
+			super.exitKeysignatureNote(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Key Signature note {0}", ctx.getText());
+
+			// Logger.getLogger(KernImporter.class.getName()).log(Level.WARNING,
+			// "Not implemented");
+			// URGENT Control de qu� notas pone
+			ksNotesCount++;
+		}
+
+		@Override
+		public void exitMeterKnown(kernParser.MeterKnownContext ctx) {
+			super.exitMeterKnown(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Meter {0}", ctx.getText());
+			long currentTime = getCurrentTime();
+			Meter ts = new Meter(new Integer(ctx.numerator().getText()), new Integer(ctx.denominator().getText())); // TODO
+																													// Denominadores
+																													// con
+																													// puntillos
+			ts.setTime(currentTime);
+			// TODO Compuestos
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Recognized time signature {0}", ts);
+			Meter presentMeter = scoreSong.getMeterWithOnsetOrNull(currentTime);
+			if (presentMeter != null) {
+				if (!presentMeter.equals(ts)) {
+					throw new GrammarParseRuntimeException("There is already a meter " + presentMeter.toString()
+							+ " at time " + currentTime + " while inserting " + ts.toString());
+				}
+				currentMeter = presentMeter;
+			} else {
+				try {
+					scoreSong.addMeter(currentTime, ts);
+				} catch (IM2Exception ex) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+					throw new IM2RuntimeException(ex);
+				}
+				// TODO No soportamos cambios de comp�s entre spines, y tampoco
+				// lo comprobamos
+				currentMeter = ts;
+
+			}
+		}
+
+		@Override
+		public void exitBarline(kernParser.BarlineContext ctx) {
+			super.exitBarline(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Barline {0}", ctx.getText());
+
+			// only process last spine barline
+			if (!inHarmSpine()) {
+				if (currentSpineIndex < spines.size() - 1) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+							"Barline in spine {0}, not processing for not being the last spine", currentSpineIndex);
+				} else {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+							"Barline in last spine, processing it");
+					/*
+					 * long currentTime = getCurrentTime(); try { // close
+					 * previous bar if (currentMeter != null && currentMeasure
+					 * != null && scoreSong.getBarCount()<=1) { // only the
+					 * first bar // check anacrusis long offset = currentTime -
+					 * (currentMeter.getTime()+currentMeter.getMeasureDuration(
+					 * scoreSong.getResolution())); if (offset != 0) {
+					 * Logger.getLogger(KernImporter.class.getName()).log(Level.
+					 * FINE, "Anacrusis found starting at time {0}", offset);
+					 * scoreSong.setAnacrusisOffset(offset); //for
+					 * (ScoreSoundingElement sn : measurescorenotes) { // try {
+					 * // sn.move(offset); // } catch (IM2Exception ex) { //
+					 * Logger.getLogger(KernImporter.class.getName()).log(Level.
+					 * SEVERE, null, ex); // throw new
+					 * GrammarParseException(ex); // } //} //measurescorenotes =
+					 * new ArrayList<>(); } } } catch (IM2Exception ex) {
+					 * Logger.getLogger(KernImporter.class.getName()).log(Level.
+					 * SEVERE, null, ex); throw new
+					 * GrammarParseRuntimeException(ex); }
+					 */
+					// check anacrusis
+					int barNumber;
+					if (ctx.NUMBER() == null) {
+						try {
+							barNumber = scoreSong.getBarCount() + 1;
+							Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+									"Barline without number, assigning {0}", barNumber);
+						} catch (IM2Exception ex) {
+							Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+							throw new GrammarParseRuntimeException(ex);
+						}
+					} else {
+						try {
+							barNumber = new Integer(ctx.NUMBER().getText());
+							Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Barline with number {0}",
+									barNumber);
+
+							long currentTime = getCurrentTime();
+							long newBarTime = currentTime;
+							if (currentTime > 0 && currentMeter != null && scoreSong.getBarCount() == 0) { // only
+																											// the
+																											// first
+																											// bar
+								// check anacrusis
+								// long offset =
+								// (currentMeter.getTime()+currentMeter.getMeasureDuration(scoreSong.getResolution()))
+								// - currentTime;
+								long expectedTime = currentMeter.getMeasureDurationAsTicks();
+								long offset = expectedTime - currentTime;
+								if (offset != 0) {
+									Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+											"Anacrusis found starting at time {0}", offset);
+									scoreSong.setAnacrusisOffset(offset);
+									lastTime = offset;
+									scoreSong.addBar(0, new Bar(0));
+									/*
+									 * for (ScorePart<ScoreDurationalElement<
+									 * FiguresModern>> part:
+									 * scoreSong.getParts()) { for
+									 * (ScoreVoice<ScoreDurationalElement<
+									 * FiguresModern>> voice: part.getVoices())
+									 * { ArrayList<ScoreDurationalElement<
+									 * FiguresModern>> notes =
+									 * voice.getDurationalSymbolsActiveWithin(0,
+									 * currentTime); voice.moveElements(notes,
+									 * offset); } }
+									 */
+									for (ScoreVoice spine : spines.values()) {
+										ArrayList<ScoreDurationalSymbol> notes = spine
+												.getDurationalSymbolsActiveWithin(0, currentTime);
+										spine.moveElements(notes, offset);
+									}
+
+									scoreSong.moveHarmomies(offset);
+									scoreSong.moveKeys(offset);
+									newBarTime = expectedTime;
+								}
+							}
+							currentMeasure = new Bar(barNumber);
+							scoreSong.addBar(newBarTime, currentMeasure);
+						} catch (IM2Exception ex) {
+							Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+							throw new GrammarParseRuntimeException(ex);
+						}
+					}
+				}
+			}
+		}
+
+		TreeSet<Integer> nonTupletDurations = new TreeSet<>(); // faster than a
+																// math op
+
+		{
+			nonTupletDurations.add(0);
+			nonTupletDurations.add(1);
+			nonTupletDurations.add(2);
+			nonTupletDurations.add(4);
+			nonTupletDurations.add(8);
+			nonTupletDurations.add(16);
+			nonTupletDurations.add(32);
+			nonTupletDurations.add(64);
+			nonTupletDurations.add(128);
+			nonTupletDurations.add(256);
+		}
+
+		@Override
+		public void exitSplineTerminator(kernParser.SplineTerminatorContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Spline terminator for spline {0}",
+					currentSpineIndex);
+		}
+
+		@Override
+		public void exitNoteRestChord(kernParser.NoteRestChordContext ctx) {
+			throw new UnsupportedOperationException("TODO refactorizacion");
+			/*
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "NoteRestChord {0}", ctx.getText()); if
+			 * (currentVoiceTemp.inTuplet) { try { int dur =
+			 * currentVoiceTemp.lastDuration;
+			 * currentVoiceTemp.tupletDurations.add(dur);
+			 * currentVoiceTemp.mcdTupleElementDuration = gcd(dur,
+			 * currentVoiceTemp.mcdTupleElementDuration); currentVoiceTemp.mcm =
+			 * mcm(dur, currentVoiceTemp.mcm);
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Adding element to tuplet with figureAndDots {0}", dur);
+			 * 
+			 * if (processTuplet()) { // tuplet complete
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Tuplet processed"); currentVoiceTemp.inTuplet = false;
+			 * currentVoiceTemp.tupletDurations.clear();
+			 * currentVoiceTemp.tupletElements.clear(); } } catch (IM2Exception
+			 * | NoMeterExceptionex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseRuntimeException(ex); } }
+			 */
+		}
+
+		VoiceTemp getCurrentVoiceTemp() {
+			if (inHarmSpine()) {
+				// try to get the root voice
+				if (rootSpine != -1) {
+					return rootVoiceTemp;
+				} else {
+					// get the first available voiceTemp
+					for (int i = 0; i < this.voiceTemp.size(); i++) {
+						if (voiceTemp.get(i) != null) {
+							return voiceTemp.get(i);
+						}
+					}
+					Logger.getLogger(KernImporter.class.getName()).log(Level.WARNING,
+							"Cannot get a voice for the harm spine");
+					return null;
+				}
+			} else {
+				return voiceTemp.get(currentSpineIndex);
+			}
+		}
+
+		@Override
+		public void exitDuration(kernParser.DurationContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "ScoreFigureAndDots {0}", ctx.getText());
+
+			int dur = new Integer(ctx.NUMBER().getText());
+			/*
+			 * boolean processFigure = true; if (currentVoiceTemp.inTuplet) {
+			 * //if (dur != tupleElementDuration) { boolean isNonTupletDuration
+			 * = nonTupletDurations.contains(dur); int gcdVal=0;
+			 * //System.out.println("DUR: " + dur); if (!isNonTupletDuration) {
+			 * gcdVal = gcd(dur, currentVoiceTemp.mcdTupleElementDuration); } if
+			 * (isNonTupletDuration || gcdVal == 0) { try { processTuplet(); //
+			 * process previous values con continue with this one } catch
+			 * (NoMeterException | IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseException(ex); } } else {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "In tuplet with element figureAndDots {0}", ctx.getText());
+			 * currentVoiceTemp.tupletDurations.add(new
+			 * Integer(ctx.NUMBER().getText())); processFigure = false;
+			 * currentVoiceTemp.mcdTupleElementDuration = gcdVal;
+			 * currentVoiceTemp.mcm = mcm(dur, currentVoiceTemp.mcm);
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "In tuplet with gcd {0}",
+			 * currentVoiceTemp.mcdTupleElementDuration); } }
+			 */
+			VoiceTemp currentVoiceTemp = getCurrentVoiceTemp();
+			FiguresModern f;
+			switch (ctx.NUMBER().getText()) {
+			case "0":
+				f = FiguresModern.DOUBLE_WHOLE;
+				break;
+			case "1":
+				f = FiguresModern.WHOLE;
+				break;
+			case "2":
+				f = FiguresModern.HALF;
+				break;
+			case "4":
+				f = FiguresModern.QUARTER;
+				break;
+			case "8":
+				f = FiguresModern.EIGHTH;
+				break;
+			case "16":
+				f = FiguresModern.SIXTEENTH;
+				break;
+			case "32":
+				f = FiguresModern.THIRTY_SECOND;
+				break;
+			case "64":
+				f = FiguresModern.SIXTY_FOURTH;
+				break;
+			case "128":
+				f = FiguresModern.HUNDRED_TWENTY_EIGHTH;
+				break;
+			case "256":
+				f = FiguresModern.TWO_HUNDRED_FIFTY_SIX;
+				break;
+			default: // tuplet
+				f = FiguresModern.TWO_HUNDRED_FIFTY_SIX; // one temporal that
+															// will be modified
+															// later
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+						"ScoreFigureAndDots figureAndDots has to be a tuplet {0}", ctx.getText());
+				if (!currentVoiceTemp.inTuplet) {
+					currentVoiceTemp.inTuplet = true;
+					currentVoiceTemp.tupletElements.clear();
+					currentVoiceTemp.mcdTupleElementDuration = dur;
+					currentVoiceTemp.mcm = dur;
+					currentVoiceTemp.tupletDurations.clear();
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+							"Starting tuplet with element figureAndDots {0}", ctx.getText());
+				}
+				currentVoiceTemp.lastDuration = dur;
+
+			}
+			int dots = ctx.augmentationDots().getText().length();
+			if (!currentVoiceTemp.inTuplet) {
+				ScoreFigureAndDots rhythm = new ScoreFigureAndDots(f, dots);
+
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "ScoreFigureAndDots {0}", rhythm.toString());
+
+				if (ctx.getParent().getRuleIndex() != kernParser.RULE_denominator) { // not
+																						// rule
+																						// for
+																						// meter
+					lastDuration = rhythm;
+				}
+			} else { // TODO Comprobar que no salimos de un tuplet sin dots y
+						// pasamos a uno con dots...
+				currentVoiceTemp.tupletDots = dots;
+				ScoreFigureAndDots rhythm = new ScoreFigureAndDots(f, 0);
+				lastDuration = rhythm;
+			}
+		}
+
+		private void checkAllNoteNameEqual(String text) throws GrammarParseRuntimeException {
+			// check all letters are equal
+			for (int i = 1; i < text.length(); i++) {
+				if (text.charAt(i) != text.charAt(0)) {
+					throw new GrammarParseRuntimeException(
+							"The characters for a note name should be the same for specifying the octave, and we have '"
+									+ text + "'");
+				}
+			}
+		}
+
+		@Override
+		public void enterTrebleNotes(kernParser.TrebleNotesContext ctx) {
+			super.enterTrebleNotes(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "TrebleNotes {0}", ctx.getText());
+			String t = ctx.getText();
+			checkAllNoteNameEqual(t);
+			octaveModif = ctx.getText().length() - 1;
+			noteName = t.substring(0, 1).toUpperCase();
+
+		}
+
+		@Override
+		public void enterBassNotes(kernParser.BassNotesContext ctx) {
+			super.enterBassNotes(ctx);
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "BassNotes {0}", ctx.getText());
+			String t = ctx.getText();
+			checkAllNoteNameEqual(t);
+			octaveModif = -ctx.getText().length();
+			noteName = t.substring(0, 1).toUpperCase();
+		}
+
+		@Override
+		public void exitNote(kernParser.NoteContext ctx) {
+			throw new UnsupportedOperationException("TODO refactorización");
+			/*
+			 * super.enterNote(ctx);
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "Note {0}", ctx.getText());
+			 * 
+			 * int octave = 4 + octaveModif;
+			 * 
+			 * // check all letters are equal NoteNames nn =
+			 * NoteNames.valueOf(noteName);
+			 * 
+			 * Accidentals acc = Accidentals.NATURAL; if (ctx.alteration() !=
+			 * null) { switch (ctx.alteration().getText()) { case "n": acc =
+			 * Accidentals.NATURAL; break; case "--": acc =
+			 * Accidentals.DOUBLE_FLAT; break; case "-": acc = Accidentals.FLAT;
+			 * break; case "#": acc = Accidentals.SHARP; break; case "##": acc =
+			 * Accidentals.DOUBLE_SHARP; break; default: throw new
+			 * GrammarParseRuntimeException("Unimplemented accidental: " +
+			 * ctx.alteration().getText()); } } try { long currentTime =
+			 * getCurrentTime(); ScoreDurationalSymbol sse; if (inChord) { if
+			 * (chord == null) { chord = new
+			 * ModernChord(lastDuration.getFigure(), lastDuration.getDots());
+			 * currentVoice.addDurationalSymbolAtTime(currentTime, chord);
+			 * chord.setStaff(getStaff(currentSpineIndex)); lastNoteOrChord =
+			 * chord;
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "New chord at time {0}", chord.getTime()); if
+			 * (currentVoiceTemp.inTuplet) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Chord added to tuplet");
+			 * currentVoiceTemp.tupletElements.add(chord); } } else { if
+			 * (!lastDuration.equals(chord.getDuration())) { throw new
+			 * GrammarParseRuntimeException("The chord rhythm " +
+			 * chord.getDuration().toString() + " is different from " +
+			 * lastDuration.toString()); } } chord.addPitch(new
+			 * ScientificPitch(new PitchClass(nn, acc), octave)); } else {
+			 * 
+			 * ScoreDurationalSymbol<FiguresModern> previous =
+			 * currentVoice.isEmpty() ? null :
+			 * currentVoice.getLastDurationalSymbol(); ModernNote sn = new
+			 * ModernNote(nn, octave, acc, lastDuration.getFigure(),
+			 * lastDuration.getDots()); // it is added to the voice
+			 * currentVoice.addDurationalSymbolAtTime(currentTime, sn);
+			 * lastNoteOrChord = sn; if (currentSpineIndex == rootSpine) {
+			 * //TODO - en teoría no debería hacer falta, el hash
+			 * stavesForSpines debería contenerlo - lo ponemos para depurar un
+			 * error sn.setStaff(rootStaff); if (currentVoice !=
+			 * scoreSong.getAnalysisVoice()) { throw new
+			 * GrammarParseRuntimeException(
+			 * "The analysis voice is different from the current voice in the root spine"
+			 * ); } } else { sn.setStaff(getStaff(currentSpineIndex)); }
+			 * 
+			 * if (ctx.afterNote() != null &&
+			 * (!ctx.afterNote().tiemiddle().isEmpty() ||
+			 * !ctx.afterNote().tieend().isEmpty())) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Tie found"); if (previous == null) { throw new
+			 * GrammarParseRuntimeException(
+			 * "Tie found but no previous note present"); } if (previous
+			 * instanceof ModernNote) { sn.setTiedFrom((ModernNote) previous); }
+			 * else { throw new GrammarParseRuntimeException(
+			 * "Tie found but previous element is not a note, it is a " +
+			 * previous.getClass().toString()); } }
+			 * 
+			 * if (!ctx.afterNote().pause().isEmpty()) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Pause found"); sn.setFermata(true); }
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Score note added {0}", sn.toString()); if
+			 * (currentVoiceTemp.inTuplet) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Score note added {0} to tuplet", sn.toString());
+			 * currentVoiceTemp.tupletElements.add(sn); }
+			 * 
+			 * if (inRootSpine()) { lastRootNote = sn; if
+			 * (!isRootBeforeHarmonies()) { if (lastHarmony != null) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Setting root {0} to harmony {1}", new
+			 * Object[]{sn.getPitchClass(), lastHarmony});
+			 * lastHarmony.setRoot(sn.getPitchClass()); } } } } } catch
+			 * (IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new
+			 * GrammarParseRuntimeException(ex.getMessage()); }
+			 */
+		}
+
+		@Override
+		public void enterChord(kernParser.ChordContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Enter chord {0}", ctx.getText());
+			inChord = true;
+			chord = null;
+		}
+
+		@Override
+		public void exitChord(kernParser.ChordContext ctx) {
+			inChord = false;
+			chord = null;
+		}
+
+		@Override
+		public void exitRest(kernParser.RestContext ctx) {
+			throw new UnsupportedOperationException("TODO refactorización");
+			/*
+			 * super.enterRest(ctx);
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST,
+			 * "Rest {0}", ctx.getText()); try { //ctx.noteName(). //TODO Crear
+			 * rest con ritmo lastDuration long currentTime = getCurrentTime();
+			 * ModernRest rest = new ModernRest(lastDuration.getFigure(),
+			 * lastDuration.getDots());
+			 * currentVoice.addDurationalSymbolAtTime(currentTime, rest);
+			 * rest.setStaff(getStaff(currentSpineIndex)); // Beniarbeig 2014
+			 * //measurescorenotes.add(rest);
+			 * 
+			 * if (ctx.pause() != null && !ctx.pause().isEmpty()) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Pause found"); rest.setFermata(true); }
+			 * 
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Rest added {0}", rest.toString()); if
+			 * (currentVoiceTemp.inTuplet) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+			 * "Rest added {0} to tuplet");
+			 * currentVoiceTemp.tupletElements.add(rest); }
+			 * 
+			 * } catch (IM2Exception ex) {
+			 * Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			 * null, ex); throw new GrammarParseRuntimeException(ex); }
+			 */
+		}
+
+		private void prepareFiguresForTuplet() {
+			figureBeatsSortedForTupletProcessing = new TreeSet<>();
+			for (FiguresModern f : FiguresModern.values()) {
+				// figureRatiosSortedForTupletProcessing.add(f.getRatio());
+				figureBeatsSortedForTupletProcessing.add(new Double(f.getBeatEncoding()));
+			}
+		}
+
+		// see http://www2.siba.fi/muste1/index.php?id=100&la=en
+		// TODO Probar dosillo en comp�s compuesto
+		// TODO Seguramente esto no est� tampoco hecho en el MusicXMLImporter
+		/**
+		 *
+		 * @return True if it is processed
+		 * @throws IM2Exception
+		 * @throws NoMeterException
+		 */
+		private boolean processTuplet() throws IM2Exception, NoMeterException {
+			// int nelementsInTuplet = currentVoiceTemp.tupletElements.size();
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+					"Trying to process tuplet with {0} symbols of kern figureAndDots with m.c.d. {1} and m.c.m. {2}",
+					new Object[] { currentVoiceTemp.tupletElements.size(), currentVoiceTemp.mcdTupleElementDuration,
+							currentVoiceTemp.mcm });
+
+			// this is like the first part of tupletComplete but also adds the
+			// span
+			int groupDuration = 0;
+			ArrayList<Integer> spans = new ArrayList<>();
+			int nelementsInTuplet = 0;
+			for (Integer d : currentVoiceTemp.tupletDurations) {
+				int span = currentVoiceTemp.mcm / d; // inverse figureAndDots
+														// relation (longer
+														// value = shorter
+														// figureAndDots)
+				spans.add(span);
+				groupDuration += (currentVoiceTemp.mcm * span);
+				nelementsInTuplet += span;
+			}
+
+			// int nelementsInTuplet = groupDuration /
+			// currentVoiceTemp.mcdTupleElementDuration; //TODO Ver si puede dar
+			// esto un valor no entero
+			// Figures tupletDurationFigure = Figures.findBeats(groupDuration);
+			Meter ts = currentTimeSignature();
+			// double tupletDurationRatio = tupletDurationFigure.getRatio();
+
+			// double individualFigureRatio;
+			double individualDuration;
+			if (ts.isCompound()) {
+				if (nelementsInTuplet != 2 && nelementsInTuplet != 4 && nelementsInTuplet != 5
+						&& nelementsInTuplet != 7) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+							"Tuplet not complete yet {0} symbols in compount meter, expecting 2, 4, 5, or 7",
+							nelementsInTuplet);
+					return false; // not complete yet
+				}
+				// individualFigureRatio =
+				// figureRatiosSortedForTupletProcessing.floor(tupletDurationRatio
+				// / (double) nelementsInTuplet);
+				individualDuration = figureBeatsSortedForTupletProcessing
+						.ceiling((double) groupDuration / (double) nelementsInTuplet);
+			} else {
+				if (nelementsInTuplet != 3 && nelementsInTuplet != 5 && nelementsInTuplet != 6 && nelementsInTuplet != 7
+						&& nelementsInTuplet != 9) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+							"Tuplet not complete yet {0} symbols in simple meter, expecting 3, 5, 6, 7, or 9",
+							nelementsInTuplet);
+					return false; // not complete yet
+				}
+				individualDuration = figureBeatsSortedForTupletProcessing
+						.floor((double) groupDuration / (double) nelementsInTuplet);
+				// individualFigureRatio =
+				// figureRatiosSortedForTupletProcessing.ceiling(tupletDurationRatio
+				// / (double) nelementsInTuplet);
+			}
+			int actualGroupDuration = (int) (groupDuration / nelementsInTuplet - individualDuration); // TODO
+																										// Esto
+																										// es
+																										// emp�rico,
+																										// hay
+																										// que
+																										// comprobarlo
+																										// bien
+			FiguresModern individualDurationFigure = FiguresModern.findBeats((int) individualDuration);
+			// ScoreFigureAndDots individualFigureDuration = new
+			// ScoreFigureAndDots(Figures.findRatio(individualFigureRatio),
+			// currentVoiceTemp.tupletDots); //TODO Ver lo que dice de los
+			// puntillos, si se usan tuplets con puntillos en principio s�lo
+			// tenemos que poner aqu� los puntillos
+			ScoreFigureAndDots individualFigureDuration = new ScoreFigureAndDots(individualDurationFigure, currentVoiceTemp.tupletDots); // TODO
+																														// Ver
+																														// lo
+																														// que
+																														// dice
+																														// de
+																														// los
+																														// puntillos,
+																														// si
+																														// se
+																														// usan
+																														// tuplets
+																														// con
+																														// puntillos
+																														// en
+																														// principio
+																														// s�lo
+																														// tenemos
+																														// que
+																														// poner
+																														// aqu�
+																														// los
+																														// puntillos
+
+			// int inSpaceOfNotes = (int) ((double)tupletDurationRatio /
+			// individualFigureDuration.getFigure().getRatio());
+			// int inSpaceOfNotes = (int) (groupDuration / individualDuration);
+			int inSpaceOfNotes = (int) (individualDuration / actualGroupDuration); // TODO
+																					// esto
+																					// es
+																					// empirico
+																					// -
+																					// va
+																					// a
+																					// la
+																					// inversa,
+																					// menor
+																					// valor
+																					// mayor
+																					// duracion
+
+			if (nelementsInTuplet * actualGroupDuration != currentVoiceTemp.mcm) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+						"Tuplet not complete yet {0} symbols * {1} actualGroupDuration != {2} mcm",
+						new Object[] { nelementsInTuplet, actualGroupDuration, currentVoiceTemp.mcm });
+				return false;
+			}
+
+			Tuplet tuplet = new Tuplet(currentVoiceTemp.tupletElements.get(0).getTime(), individualFigureDuration,
+					nelementsInTuplet, inSpaceOfNotes);
+
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Tuplet processed: {0}", tuplet.toString());
+
+			for (int i = 0; i < currentVoiceTemp.tupletElements.size(); i++) {
+				ScoreDurationalSymbol sse = currentVoiceTemp.tupletElements.get(i);
+				int dur = currentVoiceTemp.tupletDurations.get(i);
+				// int span = dur / currentVoiceTemp.mcdTupleElementDuration;
+				tuplet.addElementAndChangeItsOnsetAndDuration(sse, spans.get(i));
+			}
+			currentVoiceTemp.inTuplet = false;
+			currentVoiceTemp.tupletElements.clear();
+			currentVoiceTemp.tupletDots = 0;
+			currentVoiceTemp.tupletDurations.clear();
+			return true;
+		}
+
+		private Meter currentTimeSignature() throws NoMeterException {
+			if (currentVoice.isEmpty()) {
+				return scoreSong.getFirstMeter();
+			} else {
+				try {
+					return scoreSong.getActiveMeterAtTime(currentVoice.getLastDurationalSymbol().getTime());
+				} catch (IM2Exception ex) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+					throw new GrammarParseRuntimeException(ex);
+				}
+			}
+		}
+
+		@Override
+		public void exitKeyChange(kernParser.KeyChangeContext ctx) {
+			try {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Key change {0}", ctx.getText());
+				NoteNames nn = NoteNames.valueOf(keyString.toUpperCase());
+				PitchClass pc;
+				if (ctx.keyAccidental() != null) {
+					Accidentals acc = null;
+					switch (ctx.keyAccidental().getText()) {
+					case "n":
+						acc = Accidentals.NATURAL;
+						break;
+					case "-":
+						acc = Accidentals.FLAT;
+						break;
+					case "#":
+						acc = Accidentals.SHARP;
+						break;
+					default:
+						throw new GrammarParseRuntimeException(
+								"Non valid accidental for key: " + ctx.keyAccidental().getText());
+					}
+					pc = new PitchClass(nn, acc);
+				} else {
+					pc = new PitchClass(nn);
+				}
+				// Key previousKC =
+				// scoreSong.getActiveKeyAtTimeOrNull(getCurrentTime());
+				// boolean insertKey = false;
+				long t = getCurrentTime();
+				Key kc = new Key(pc, keyChangeMode);
+				kc.setTime(t);
+
+				Harmony previousH = scoreSong.getHarmonyWithOnsetOrNull(t);
+				if (previousH != null) {
+					if (previousH.getActiveKey() != null) {
+						if (!previousH.getActiveKey().equals(kc)) {
+							throw new GrammarParseRuntimeException(
+									"Inserting two key changes (prev=" + previousH.getActiveKey().toString() + ", new="
+											+ kc.toString() + ") at the same time (t=" + t + ")");
+						}
+					} else {
+						previousH.setKeyChange(kc);
+					}
+				} else {
+					Harmony h = new Harmony(this.scoreSong.getActiveKeyAtTimeOrNull(t), kc);
+					scoreSong.addHarmony(t, h);
+					lastHarmony = h;
+				}
+
+				/*
+				 * if (previousKC != null && !previousKC.hasMode()) {
+				 * Logger.getLogger(KernImporter.class.getName()).log(Level.
+				 * FINE,
+				 * "Removing key signature without mode to substituted by this key change"
+				 * , ctx.getText()); scoreSong.removeKey(previousKC); insertKey
+				 * = true; } else if (previousKC == null) { insertKey = true; }
+				 * else { if (t == previousKC.getTime()) { if
+				 * (!previousKC.equals(kc)) { throw new
+				 * GrammarParseRuntimeException(
+				 * "Two different keys (previous = " + previousKC.toString() +
+				 * ", new one = " + kc.toString() +
+				 * ") being inserted in the same time " + t); } else { insertKey
+				 * = false; // already present } } else { insertKey = true; //
+				 * different time } }
+				 * 
+				 * if (insertKey) { scoreSong.addKey(t, kc); }
+				 */
+			} catch (IM2Exception ex) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+				throw new GrammarParseRuntimeException(ex.toString());
+			}
+		}
+
+		@Override
+		public void exitMajorKey(kernParser.MajorKeyContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Major key {0}", ctx.getText());
+			keyChangeMode = Mode.MAJOR;
+			keyString = ctx.getText();
+		}
+
+		@Override
+		public void exitMinorKey(kernParser.MinorKeyContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "Minor key {0}", ctx.getText());
+			keyChangeMode = Mode.MINOR;
+			keyString = ctx.getText();
+		}
+
+		@Override
+		public void exitHarmChordSpecification(kernParser.HarmChordSpecificationContext ctx) {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.FINEST, "HarmChordSpecification {0}",
+					ctx.getText());
+			try {
+				ChordType type;
+				Degree degree;
+				if (ctx.harmMajorChord() != null) {
+					type = ChordType.MAJOR;
+					degree = Degree.valueOf(ctx.harmMajorChord().getText().toUpperCase());
+				} else if (ctx.harmMinorChord() != null) {
+					type = ChordType.MINOR; // URGENT Pasar las 7mas ...
+					degree = Degree.valueOf(ctx.harmMinorChord().getText().toUpperCase());
+				} else {
+					throw new GrammarParseRuntimeException("Both major and minor chord are empty");
+				}
+
+				long t = lastNoteOrChord.getTime();
+
+				// TODO Lo he puesto ahora a piñon para que esta línea de bajo
+				// compile
+				// Harmony h = new Harmony(null, degree, type);
+				Key key = this.scoreSong.getActiveKeyAtTimeOrNull(t);
+				Harmony h = new Harmony(key, null, degree, type);
+				Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Creating harmony {0}", h.toString());
+				// FIN TODO
+
+				Harmony previousH = scoreSong.getHarmonyWithOnsetOrNull(t);
+				if (previousH == null) {
+					scoreSong.addHarmony(t, h);
+					lastHarmony = h;
+					// System.out.println("Adding harmony " + h.toString() + "
+					// at time " + t);
+				} else { // throw new GrammarParseRuntimeException("Previous
+							// harmony (" + previousH.toString() + ") with the
+							// same time (" + t + ") while inserting " +
+							// h.toString());
+					// TODO - comprobar en gramática, es un valor tipo IVb[vi] -
+					// ver // alternate (2nd value) en kern.g4
+					if (previousH.hasJustKeyInformation()) {
+						try {
+							h.setKeyChange(previousH.getActiveKey());
+							h.setTime(t);
+							lastHarmony = h;
+							try {
+								scoreSong.replace(previousH, h);
+							} catch (IM2Exception ex) {
+								Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+								throw new GrammarParseRuntimeException(
+										"Cannot replace a harmony with a new with key information");
+							}
+						} catch (IM2Exception ex) {
+							Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+							throw new GrammarParseRuntimeException(ex);
+						}
+					} else if (!previousH.equalsChord(h)) {
+						previousH.setCommonHarmony(h);
+						lastHarmony = h;
+					} // if not we don't repeat it
+				}
+
+				if (lastRootNote != null && isRootBeforeHarmonies() && h.getRoot() == null) {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.FINE, "Setting root {0} to harmony {1}",
+							new Object[] { lastRootNote.getPitchClass(), h });
+					h.setRoot(lastRootNote.getPitchClass());
+				}
+			} catch (IM2Exception ex) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE, null, ex);
+				throw new GrammarParseRuntimeException(ex);
+			}
+
+			// Logger.getLogger(KernImporter.class.getName()).log(Level.SEVERE,
+			// "SIN ACABAR DE CONSTRUIR BIEN LA ARMON�A", ctx.getText());
+		}
+	}
+	// TODO refactorización
+	/*
+	 * private ScoreStaff getStaff(int currentSpineIndex) throws IM2Exception {
+	 * ScoreStaff staff = stavesForSpines.get(currentSpineIndex); if (staff ==
+	 * null) { Logger.getLogger(KernImporter.class.getName()).log(Level.FINE,
+	 * "Adding staff 0 to part"); staff = addStaff(stavesByNumber.size()); }
+	 * return staff; } }
+	 */
+
+	// @Override
+	public ModernSong importSong(File file) throws ImportException {
+		ErrorListener errorListener = new ErrorListener();
+		try {
+			Logger.getLogger(KernImporter.class.getName()).log(Level.INFO, "Parsing {0}", file.getAbsoluteFile());
+			InputStream is = new FileInputStream(file);
+			kernLexer lexer = new kernLexer(new ANTLRInputStream(is));
+			lexer.addErrorListener(errorListener);
+			CommonTokenStream tokens = new CommonTokenStream(lexer);
+			kernParser parser = new kernParser(tokens);
+			parser.addErrorListener(errorListener);
+			// parser.setErrorHandler(new BailErrorStrategy());
+			// parser.setBuildParseTree(true); // tell ANTLR to build a parse
+			// tree
+			ParseTree tree = parser.song();
+			ParseTreeWalker walker = new ParseTreeWalker();
+			ModernSong song = new ModernSong();
+			Loader loader = new Loader(song);
+			walker.walk(loader, tree);
+			if (errorListener.getNumberErrorsFound() != 0) {
+
+				throw new ImportException(errorListener.getNumberErrorsFound() + " errors found in "
+						+ file.getAbsolutePath() + "\n" + errorListener.toString());
+			}
+			// return song;
+
+			// loader.setRootNotesToHarmonies();
+			ModernSong ssong;
+			ssong = loader.scoreSong;
+			ssong.invertPartAndVoiceNumbering(); // the kern is written from
+													// bass to treble
+			ssong.moveAnalysisPartToBottom();
+			if (loader.rootPart != null) {
+				ScoreVoice v = loader.spines.get(loader.rootSpine);
+				if (v != null) {
+					throw new UnsupportedOperationException("TODO refactorización");
+
+					/*
+					 * if (loader.rootPart.getStaves().isEmpty()) { throw new
+					 * ImportException("The root part contains no staff"); } if
+					 * (loader.rootPart.getStaves().size() > 1) { throw new
+					 * ImportException("The root part contains > 1 staff"); }
+					 * 
+					 * replaceRootnotesForAnalysisHooks(loader.scoreSong);
+					 */
+				} else {
+					Logger.getLogger(KernImporter.class.getName()).log(Level.WARNING,
+							"No root spine to be imported as voice");
+				}
+			}
+			return song;
+		} catch (Throwable e) {
+			// TODO Logs
+			// TODO Logs
+			e.printStackTrace();
+
+			Logger.getLogger(KernImporter.class.getName()).log(Level.WARNING, "Import error {0}", e.getMessage());
+			for (ParseError pe : errorListener.getErrors()) {
+				Logger.getLogger(KernImporter.class.getName()).log(Level.WARNING, "Parse error: {0}", pe.toString());
+			}
+
+			throw new ImportException(e.getMessage());
+		}
+	}
+
+	/**
+	 * Remove all notes in the root part and create an analysis hook for each
+	 * possible subdivision (the minimum if each bar)
+	 *
+	 * @param rootPart
+	 */
+	private void replaceRootnotesForAnalysisHooks(StaffAnalysisLayer staffLayer, ModernSong song) throws IM2Exception {
+		song.getAnalysisVoice().clearElementsWithRhythm();
+		song.createAnalysisHooks(staffLayer);
+	}
+
+	public static void main(String[] args) throws ImportException, IM2Exception {
+		/*
+		 * Logger.getLogger(KernImporter.class.getName()).info(
+		 * "Changing level to FINEST to the stderr"); // LOG this level to the
+		 * log Logger.getLogger(KernImporter.class.getName()).setLevel(Level.
+		 * FINESTST);
+		 * 
+		 * ConsoleHandler handler = new ConsoleHandler(); // PUBLISH this level
+		 * handler.setLevel(Level.FINESTST);
+		 * Logger.getLogger(KernImporter.class.getName()).addHandler(handler);
+		 */
+
+		// File file = new File("testdata/kern/base_tuplet.krn");
+		// File file = new File("testdata/kern/harm-rep.krn");
+		// File file = new File("/tmp/guide02-example2-1.krn");
+		// File file = new File("/tmp/guide06-example6-2.krn");
+		KernImporter instance = new KernImporter();
+		// ModernSong song = instance.importSong(new
+		// File("/Users/drizo/cmg/investigacion/training_sets/sources/tonalanalysis/harmonizedchorals/KERN-SCORES/chor048.krn"));
+		// System.out.println(song.getAllPitches());
+
+		// ModernSong expResult = new MusicXMLImporter().importSong(new
+		// File("/Users/drizo/cmg/investigacion/training_sets/sources/tonalanalysis/harmonizedchorals/KERN-SCORES/chor048.xml"));
+	}
+
+	/**
+	 * Remove all root notes and set analysis hooks with the smallest note
+	 * figureAndDots of each bar
+	 */
+}

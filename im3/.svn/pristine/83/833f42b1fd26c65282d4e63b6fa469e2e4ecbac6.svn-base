@@ -1,0 +1,704 @@
+/*
+ * Copyright (C) 2013 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.adt.IndexedMap;
+
+/**
+ * All symbols common to all voices are located in layer 0 (mainLayer)
+ *
+ * @author drizo
+ */
+public abstract class Staff extends VerticalScoreDivision {
+	/**
+	 * The staff belongs either to a page or is grouped into a system
+	 */
+	private StaffSystem parentSystem;
+
+	protected TreeMap<Integer, StaffLayer> layers;
+	/**
+	 * The layer containing the clef, time signatures, key signatures etc... It
+	 * is contained in the field layers
+	 */
+	protected StaffLayer backgroundLayer;
+	protected int BACKGROUND_LAYER_NUMBER = -1;
+	protected int lines;
+
+	/**
+	 * Used to be able to quick locate a clef given a time The class CoreSymbol
+	 * is used because we compare any kind of symbols with clefs
+	 */
+	TreeMap<Time, Clef> clefs;
+	TreeMap<Time, KeySignature> keySignatures;
+	TreeMap<Time, TimeSignature> timeSignatures;
+	TreeMap<Time, Barline> barLines;
+
+	protected IndexedMap<ScoreLyricVerse> lyricVerses;
+	protected IndexedMap<ScoreAnalysisKind> analysisKinds;
+
+	/**
+	 *
+	 * The key corresponds to the time it is set, the value is the set of ledger
+	 * lines
+	 */
+	protected TreeMap<Time, LedgerLines> ledgerLines;
+	protected TreeMap<Time, Fermate> fermate;
+	private final ArrayList<StaffMark> marks; // ledger lines are inserted here
+												// as
+												// well in order to deal with
+												// layout
+	private final ArrayList<Attachment<?>> attachments;
+
+	/**
+	 *
+	 * The key corresponds to the time it is set, the value is the set of ledger
+	 * lines
+	 */
+	// protected HashMap<Time, HashMap<PositionAboveVelow, Fermata>
+	// ledgerLines;//TODO Fermata as
+	/**
+	 * Usually it will contain just a part, but in typical 2 staff SATB layouts
+	 * it will contain two of them
+	 */
+	protected List<ScorePart> parts;
+	
+	boolean ossia;
+
+	/**
+	 * It must be a list, ordered
+	 */
+	// ArrayList<CoreSymbol> symbols;
+	//private ScorePart firstPart;
+	// TODO Collection<Ossia> ossias;
+
+	/**
+	 *
+	 * @param firstPart
+	 * @param hierarchicalOrder
+	 *            The ordering in the score. It is absolute, even though they
+	 *            are inside a group
+	 * @param numberIdentifier
+	 * @param nlines
+	 */
+	public Staff(ScorePart firstPart, String hierarchicalOrder, int numberIdentifier,
+			int nlines) {
+		super(firstPart.getScoreSong(), hierarchicalOrder, numberIdentifier);
+		init(nlines);
+		parts = new ArrayList<>();
+		parts.add(firstPart);
+		ledgerLines = new TreeMap<>();
+		fermate = new TreeMap<>();
+		this.marks = new ArrayList<>();
+		this.attachments = new ArrayList<>();
+		ossia = false;
+		// mainLayer = this.addLayer();
+	}
+
+	private void init(int nlines) {
+		this.lines = nlines;
+		this.clefs = new TreeMap<>();
+		this.timeSignatures = new TreeMap<>();
+		this.keySignatures = new TreeMap<>();
+		this.barLines = new TreeMap<>();
+		layers = new TreeMap<>();
+		backgroundLayer = new StaffLayer(this, BACKGROUND_LAYER_NUMBER);
+		layers.put(BACKGROUND_LAYER_NUMBER, backgroundLayer);
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- General --------------------------------
+	// ----------------------------------------------------------------------
+	public StaffSystem getParentSystem() {
+		return parentSystem;
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Children: actually this one
+	// --------------------------------
+	// ----------------------------------------------------------------------
+	@Override
+	public Staff getTopStaff() {
+		return this;
+	}
+
+	@Override
+	public Staff getBottomStaff() {
+		return this;
+	}
+
+	@Override
+	public List<Staff> getContainedStaves() {
+		ArrayList<Staff> result = new ArrayList<>();
+		result.add(this);
+		return result;
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Fermate --------------------------------
+	// ----------------------------------------------------------------------
+	public TreeMap<Time, Fermate> getFermate() {
+		return fermate;
+	}
+
+	public void addFermata(AtomFigure snr, PositionAboveBelow position) throws IM3Exception {
+		Fermate f = fermate.get(snr.getTime());
+		if (!fermate.containsKey(snr.getTime())) {
+			f = new Fermate(getNotationType(), this, snr, position);
+			fermate.put(snr.getTime(), f);
+			this.addMark(f);
+		} else {
+			f.addDurationalSymbol(snr, position);
+		}
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Ledger lines --------------------------------
+	// ----------------------------------------------------------------------
+	public int getLineCount() {
+		return this.lines;
+	}
+
+	public TreeMap<Time, LedgerLines> getLedgerLines() {
+		return ledgerLines;
+	}
+
+	public LedgerLines getLedgerLineOrNullFor(AtomFigure snr) throws IM3Exception {
+		return ledgerLines.get(snr.getTime());
+	}
+
+	public void addNecessaryLedgerLinesFor(AtomFigure snr, int lineSpace) throws IM3Exception {
+		int nLedgerLines = computeNumberLedgerLinesNeeded(lineSpace);
+		if (nLedgerLines != 0) {
+			addLedgerLines(snr, nLedgerLines > 0 ? nLedgerLines : -nLedgerLines,
+					nLedgerLines > 0 ? PositionAboveBelow.BELOW : PositionAboveBelow.ABOVE);
+		}
+	}
+
+	private int computeNumberLedgerLinesNeeded(int lineSpace) {
+		if (lineSpace < 0) {
+			return -lineSpace / 2;
+		} else if (lineSpace > (lines - 1) * 2) {
+			return -(lineSpace - (lines - 1) * 2) / 2;
+		} else {
+			return 0;
+		}
+	}
+
+	public void addLedgerLines(AtomFigure snr, int numberOfLines, PositionAboveBelow position) throws IM3Exception {
+		if (numberOfLines != 0) {
+			LedgerLines ll = this.ledgerLines.get(snr.getTime());
+			if (ll == null) {
+				LedgerLines object = new LedgerLines(this, snr, numberOfLines, position);
+				ledgerLines.put(snr.getTime(), object);
+				this.addMark(object);
+			} else {
+				ll.addScoreNonRest(snr, numberOfLines, position);
+			}
+		}
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Parts and layers --------------------------------
+	// ----------------------------------------------------------------------
+	public void addPart(ScorePart part) {
+		if (!parts.contains(part)) {
+			parts.add(part);
+		}
+	}
+
+	public List<ScorePart> getParts() {
+		return parts;
+	}
+
+	public Collection<StaffLayer> getLayers() {
+		return layers.values();
+	}
+
+	/**
+	 * It excludes the background layer and the analysis layers
+	 * 
+	 * @return
+	 */
+	public Collection<StaffLayer> getNonBackgroundLayers() {
+		ArrayList<StaffLayer> result = new ArrayList<>();
+		for (StaffLayer layer : this.layers.values()) {
+			if (layer != backgroundLayer && !(layer instanceof StaffAnalysisLayer)) {
+				result.add(layer);
+			}
+		}
+		return result;
+	}
+
+	public StaffLayer getBackgroundLayer() {
+		return backgroundLayer;
+	}
+
+	public void addLayer(StaffLayer layer) throws IM3Exception {
+		if (layers.containsKey(layer.getNumber())) {
+			throw new IM3Exception("There is already a layer with number " + layer.getNumber());
+		}
+		this.layers.put(layer.getNumber(), layer);
+
+	}
+
+	public StaffLayer addNewLayer() {
+		int numberMax = 0;
+
+		for (StaffLayer l : layers.values()) {
+			numberMax = Math.max(numberMax, l.getNumber());
+		}
+		numberMax += 1;
+		StaffLayer newLayer = new StaffLayer(this, numberMax);
+		this.layers.put(numberMax, newLayer);
+		return newLayer;
+	}
+
+	public StaffLayer getLayer(int number) {
+		return layers.get(number);
+	}
+
+	public List<StaffLayer> getLayersAsList() {
+		ArrayList<StaffLayer> al = new ArrayList<>();
+		for (Integer l : layers.navigableKeySet()) {
+			al.add(layers.get(l));
+		}
+		return al;
+	}
+
+	public List<StaffLayer> getLayersAsListWithoutBackground() {
+		ArrayList<StaffLayer> al = new ArrayList<>();
+		for (Integer l : layers.navigableKeySet()) {
+			StaffLayer sl = layers.get(l);
+			if (sl != this.backgroundLayer) {
+				al.add(sl);
+			}
+		}
+		return al;
+	}
+
+	public boolean containsLayer(StaffLayer l) {
+		return this.layers.containsValue(l);
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Lyric verses and analysis kinds --------------
+	// ----------------------------------------------------------------------
+
+	public ScoreLyricVerse createAndAddScoreLyrics() throws IM3Exception {
+		ScoreLyricVerse sl = new ScoreLyricVerse(lyricVerses.size() + 1, this);
+		addLyrics(sl);
+		return sl;
+	}
+
+	public void addLyrics(ScoreLyricVerse sl) throws IM3Exception {
+		if (sl == null) {
+			throw new IM3Exception("The score lyrics parameter is null");
+		}
+		lyricVerses.addItem(sl);
+	}
+
+	public Collection<ScoreLyricVerse> getAllLyrics() {
+		return lyricVerses.getAllItems().values();
+	}
+
+	public void removeScoreLyrics(ScoreLyricVerse ssl) {
+		lyricVerses.removeItem(ssl);
+	}
+
+	public Collection<ScoreAnalysisKind> getAllAnalysisKinds() {
+		return analysisKinds.getAllItems().values();
+	}
+
+	public void addAnalysisKind(ScoreAnalysisKind ak) throws IM3Exception {
+		analysisKinds.addItem(ak);
+	}
+
+	/**
+	 *
+	 * @param number
+	 * @return null if not exists
+	 */
+	public ScoreLyricVerse getLyrics(int number) {
+		return lyricVerses.getItem(number);
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Background data: clefs, signatures ....
+	// --------------------
+	// ----------------------------------------------------------------------
+	public Clef getRunningClefAt(ISymbolInLayer symbol) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, Clef> c = this.clefs.floorEntry(symbol.getTime());
+		if (c == null) {
+			throw new IM3Exception(
+					"There is no clef set at symbol " + symbol.toString() + " at time  " + symbol.getTime());
+		}
+		return c.getValue();
+	}
+
+	public Clef getRunningClefAt(Time time) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, Clef> c = this.clefs.floorEntry(time);
+		if (c == null) {
+			throw new IM3Exception("There is no clef set at time  " + time);
+		}
+		return c.getValue();
+	}
+
+	public Collection<Clef> getClefs() {
+		return this.clefs.values();
+	}
+
+	public Collection<TimeSignature> getTimeSignatures() {
+		return this.timeSignatures.values();
+	}
+
+	public Collection<KeySignature> getKeySignatures() {
+		return this.keySignatures.values();
+	}
+
+	public Collection<Barline> getBarlines() {
+		return this.barLines.values();
+	}
+
+	/**
+	 * @param time
+	 * @return null if none
+	 */
+	public Clef getClefAtTime(Time time) {
+		return this.clefs.get(time);
+	}
+
+	/**
+	 * @param time
+	 * @return null if none
+	 */
+	public TimeSignature getTimeSignatureAtTime(Time time) {
+		return this.timeSignatures.get(time);
+	}
+
+	/**
+	 * @param time
+	 * @return null if none
+	 */
+	public KeySignature getKeySignatureAtTime(Time time) {
+		return this.keySignatures.get(time);
+	}
+
+	/**
+	 * @param time
+	 * @return null if none
+	 */
+	public Barline getBarlineAtTime(Time time) {
+		return this.barLines.get(time);
+	}
+
+	public NavigableMap<Time, Barline> getBarlinesAfter(Time time) {
+		return this.barLines.tailMap(time, false);
+	}
+
+	public TimeSignature getRunningTimeSignatureAt(ISymbolInLayer symbol) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, TimeSignature> c = this.timeSignatures.floorEntry(symbol.getTime());
+		if (c == null) {
+			throw new IM3Exception(
+					"There is no time signature set at symbol " + symbol.toString() + " at time " + symbol.getTime());
+		}
+		return c.getValue();
+	}
+
+	public KeySignature getRunningKeySignatureAt(ISymbolInLayer symbol) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, KeySignature> c = this.keySignatures.floorEntry(symbol.getTime());
+		if (c == null) {
+			throw new IM3Exception(
+					"There is no time signature set at symbol " + symbol.toString() + " at time " + symbol.getTime());
+		}
+		return c.getValue();
+	}
+
+	public TimeSignature getRunningTimeSignatureAt(Time time) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, TimeSignature> c = this.timeSignatures.floorEntry(time);
+		if (c == null) {
+			throw new IM3Exception("There is no time signature set at time " + time);
+		}
+		return c.getValue();
+	}
+
+	public KeySignature getRunningKeySignatureAt(Time time) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, KeySignature> c = this.keySignatures.floorEntry(time);
+		if (c == null) {
+			throw new IM3Exception("There is no key signature set at time " + time);
+		}
+		return c.getValue();
+	}
+
+	public KeySignature getRunningKeySignatureOrNullAt(Time time) throws IM3Exception {
+		// The treeset with all clefs ordered by onsets is built after
+		// computeOnsets
+		Map.Entry<Time, KeySignature> c = this.keySignatures.floorEntry(time);
+		if (c == null) {
+			return null;
+		} else {
+			return c.getValue();
+		}
+	}
+
+	/**
+	 * Invoked from StaffLayer when the symbol is added is a clef or directly
+	 *
+	 * @param clef
+	 * @throws es.ua.dlsi.im3.IM3Exception.IM2Exception
+	 */
+	public void addClef(Clef clef) throws IM3Exception {
+		Clef previous = this.clefs.put(clef.getTime(), clef);
+		if (previous != null) {
+			backgroundLayer.removeSymbol(previous);
+		}
+		backgroundLayer.addSymbol(clef);
+	}
+
+	public void addTimeSignature(TimeSignature ts) throws IM3Exception {
+		TimeSignature previous = this.timeSignatures.put(ts.getTime(), ts);
+		if (previous != null) {
+			backgroundLayer.removeSymbol(previous);
+		}
+		backgroundLayer.addSymbol(ts);
+	}
+
+	public void addKeySignature(KeySignature ts) throws IM3Exception {
+		KeySignature previous = this.keySignatures.put(ts.getTime(), ts);
+		if (previous != null) {
+			backgroundLayer.removeSymbol(previous);
+		}
+
+		backgroundLayer.addSymbol(ts);
+	}
+
+	public void addBarline(Barline ts) throws IM3Exception {
+		Barline previous = this.barLines.put(ts.getTime(), ts);
+		if (previous != null) {
+			backgroundLayer.removeSymbol(previous);
+		}
+
+		backgroundLayer.addSymbol(ts);
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Notation symbols --------------------------------
+	// ----------------------------------------------------------------------
+	// TODO Remove scoreNote --> removes ledgerLines if empty
+	/**
+	 *
+	 * @param fromTime
+	 *            inclusive
+	 * @param toTime
+	 *            exclusive
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public List<ISymbolInLayer> getNotationSymbolsOrderedWithOnsets(Time fromTime, Time toTime) throws IM3Exception {
+		ArrayList<ISymbolInLayer> symbols = new ArrayList<>();
+		symbols.addAll(this.ledgerLines.subMap(fromTime, toTime).values());
+
+		for (StaffLayer layer : layers.values()) {
+			symbols.addAll(layer.getNotationSymbolsOrderedWithOnsets(fromTime, toTime));
+		}
+
+		SymbolsOrderer.sortList(symbols);
+		return symbols;
+	}
+
+	/**
+	 *
+	 * @param fromTime
+	 *            inclusive
+	 * @param toTime
+	 *            exclusive
+	 * @return
+	 */
+	public List<ISymbolInLayer> getNotationSymbolsOrdered() {
+		ArrayList<ISymbolInLayer> symbols = new ArrayList<>();
+		symbols.addAll(this.ledgerLines.values());
+
+		for (StaffLayer layer : layers.values()) {
+			symbols.addAll(layer.getSymbols());
+		}
+
+		SymbolsOrderer.sortList(symbols);
+		return symbols;
+	}	
+	public void addMark(StaffMark mark) throws IM3Exception {
+		this.marks.add(mark);
+		backgroundLayer.addSymbol(mark);
+	}
+
+	public void addAttachment(Attachment<?> attachment) {
+		this.attachments.add(attachment);
+	}
+
+	public ArrayList<StaffMark> getMarks() {
+		return marks;
+	}
+
+	public ArrayList<Attachment<?>> getAttachments() {
+		return attachments;
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- Accidental processing-------------------------
+	// ----------------------------------------------------------------------
+	/*FRACCIONES private Accidentals computeRequiredAccidental(TreeMap<NoteNames, PitchClass> alteredSet, PitchClass pc) {
+		// needs accidental?
+		Accidentals requiredAccidental = null;
+		PitchClass pcInKey = alteredSet.get(pc.getNoteName());
+		if (pcInKey != null) { // altered note name in key signature
+			if (!pc.equals(pcInKey)) { // alteration not valid for this pitch
+										// class
+				if (pc.getAccidental() == null || pc.getAccidental() == Accidentals.NATURAL) {
+					requiredAccidental = Accidentals.NATURAL;
+				} else {
+					requiredAccidental = pc.getAccidental(); // either flat or
+																// sharp
+				}
+			}
+		} else if (pc.getAccidental() != null && pc.getAccidental() != Accidentals.NATURAL) {
+			requiredAccidental = pc.getAccidental(); // either flat or sharp
+		}
+		return requiredAccidental;
+	}*/
+
+	/**
+	 *
+	 * Browse from left to right and set the required accidentals for each note
+	 * depending on the current key signature and previous accidentals
+	 *
+	 * @param fromTime
+	 *            inclusive
+	 * @param toTime
+	 *            exclusive
+	 * @return
+	 */
+	/*FRACCIONES public void createNoteAccidentals(Time fromTime, Time toTime) throws IM3Exception {
+		List<ISymbolInLayer> symbols = getNotationSymbolsOrdered(fromTime, toTime);
+		TreeMap<NoteNames, ScientificPitch> alteredNoteNamesInBar = new TreeMap<>();
+		TreeMap<NoteNames, PitchClass> alteredNoteNamesInKeySignature = new TreeMap<>();
+		KeySignature currentKeySignature = null; // getRunningKeySignatureAt(fromTime);
+
+		// alteredNoteNamesInKeySignature =
+		// currentKeySignature.getScoreElement().getAlteredNoteNamesSet();
+
+		for (ISymbolInLayer symbol : symbols) {
+			if (symbol instanceof Barline) {
+				alteredNoteNamesInBar.clear();
+			} else if (symbol instanceof KeySignature) {
+				currentKeySignature = (KeySignature) symbol;
+				alteredNoteNamesInKeySignature = currentKeySignature.getScoreElement().getAlteredNoteNamesSet();
+			} else if (symbol instanceof ScoreNote) {
+				NotePitchSymbolElement ps = ((ScoreNote) symbol).getPitchSymbol();
+				computeRequiredAccidentalsForPitch(alteredNoteNamesInBar, alteredNoteNamesInKeySignature, ps);
+			} else if (symbol instanceof ScoreChord) {
+				TreeSet<NotePitchSymbolElement> spitches = ((ScoreChord) symbol).getScorePitchElements();
+				for (NotePitchSymbolElement ps : spitches) {
+					computeRequiredAccidentalsForPitch(alteredNoteNamesInBar, alteredNoteNamesInKeySignature, ps);
+				}
+			}
+		}
+
+	}
+
+	void computeRequiredAccidentalsForPitch(TreeMap<NoteNames, ScientificPitch> alteredNoteNamesInBar,
+			TreeMap<NoteNames, PitchClass> alteredNoteNamesInKeySignature, NotePitchSymbolElement ps)
+			throws NotationException {
+		ScientificPitch pc = ps.getScorePitch().getPitch();
+		if (!alteredNoteNamesInBar.containsValue(pc)) { // if not previously
+														// altered
+			Accidentals requiredAccidental = computeRequiredAccidental(alteredNoteNamesInKeySignature,
+					pc.getPitchClass());
+			if (requiredAccidental != null) {
+				if (ps.getAccidentalSymbol() != null
+						&& !ps.getAccidentalSymbol().getAccidental().equals(requiredAccidental)) {
+					ps.removeSymbolElement(ps.getAccidentalSymbol());
+				}
+				if (ps.getAccidentalSymbol() == null) {
+					alteredNoteNamesInBar.put(pc.getPitchClass().getNoteName(), pc);
+					ps.setAccidental(requiredAccidental);
+				} // else it is already the one we need
+			}
+		}
+	}*/
+
+	public Time getDuration() throws IM3Exception {
+		Time maxDur = Time.TIME_ZERO;
+		for (StaffLayer layer : layers.values()) {
+			maxDur = Time.max(maxDur, layer.getDuration());
+		}
+		return maxDur;
+	}
+
+	public abstract boolean isPitched();
+
+	public final boolean isOssia() {
+		return ossia;
+	}
+
+	public final void setOssia(boolean ossia) {
+		this.ossia = ossia;
+	}
+
+	/*public Collection<? extends ISymbolInLayer> getSymbolsOrderdInTime() {
+		ArrayList<ISymbolInLayer> result = new ArrayList<>();
+		for (StaffLayer layer : layers.values()) {
+			result.addAll(layer.getSymbols());
+		}
+		Collections.sort(result, new Comparator<ISymbolInLayer>() {
+
+			@Override
+			public int compare(ISymbolInLayer o1, ISymbolInLayer o2) {
+				int diff;
+				try {
+					diff = o1.getTime().compareTo(o2.getTime());
+				} catch (IM3Exception e) {
+					throw new IM3RuntimeException("Cannot compare elements without time: "  + e);
+				}
+				if (diff == 0) {
+					diff = o1.hashCode() - o2.hashCode();
+				}
+				return diff;
+			}
+			
+		});
+		return result;
+	}*/
+	
+}

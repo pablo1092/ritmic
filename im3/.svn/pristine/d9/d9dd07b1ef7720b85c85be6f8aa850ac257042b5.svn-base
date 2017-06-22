@@ -1,0 +1,150 @@
+/*
+ * Copyright (C) 2014 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score;
+
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ *
+ * @author drizo
+ */
+public class StaffLayer {
+
+	private final ArrayList<ISymbolInLayer> layerSymbols;
+	private final ArrayList<StaffTimedPlaceHolder> timedPlaceHolders;
+	int number; //TODO que sea único
+	Staff staff;
+
+
+	public StaffLayer(Staff staff, int number) {
+		this.number = number;
+		this.staff = staff;
+		this.timedPlaceHolders = new ArrayList<>();
+		this.layerSymbols = new ArrayList<>();
+	}
+
+	/**
+	 * Used from the constructor of core symbol
+	 *
+	 * @param symbol
+	 */
+	public void addSymbol(ISymbolInLayer symbol) throws IM3Exception { // TODO
+																			// Remove
+																			// operation
+		if (symbol.getLayer() == null) {
+			symbol.setLayer(this);
+		} else if (symbol.getLayer() != this) {
+			throw new IM3Exception("Cannot add a symbol to a different layer");
+		}
+		if (!layerSymbols.contains(symbol)) { 
+			this.layerSymbols.add(symbol);
+		}
+	}
+
+	public void removeSymbol(ISymbolInLayer symbol) throws IM3Exception {
+    		if (symbol.getLayer() != null) {
+    			if (symbol.getLayer() != this) {
+    				throw new IM3Exception("Cannot remove a symbol that belongs to other layer");
+    			}
+    			symbol.setLayer(null);
+    		}
+    		this.layerSymbols.remove(symbol);
+    }
+
+	public List<ISymbolInLayer> getSymbols() {
+		return this.layerSymbols;
+	}
+
+	public Staff getStaff() {
+		return staff;
+	}
+
+	public String getName() {
+		if (staff.getName() == null) {
+			return "<no name>" + "#" + getNumber();
+		} else {
+			return staff.getName() + "#" + getNumber();
+		}
+	}
+
+	public int getNumber() {
+		return this.number;
+	}
+
+	
+	@Override
+	public int hashCode() {
+		int hash = 7;
+		hash = 79 * hash + this.getNumber();
+		hash = 79 * hash + Objects.hashCode(this.staff);
+		return hash;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		final StaffLayer other = (StaffLayer) obj;
+		if (!Objects.equals(this.staff, other.staff)) {
+			return false;
+		}
+		if (this.getNumber() != ((StaffLayer) obj).getNumber()) {
+			return false;
+		}
+		return true;
+	}
+
+	Time getDuration() throws IM3Exception {
+		Time maxDur = Time.TIME_ZERO;
+		for (ISymbolInLayer lcs : this.layerSymbols) {
+			if (lcs instanceof IDurationalTimedElement) {
+				maxDur = Time.max(maxDur, ((IDurationalTimedElement)lcs).getEndTime());	
+			}			
+		}
+		return maxDur;
+	}
+
+	//TODO Esto es un poco ineficiente
+	public List<StaffTimedPlaceHolder> getStaffPlaceHoldersWithOnsetWithin(Bar bar) throws IM3Exception {
+		ArrayList<StaffTimedPlaceHolder> result = new ArrayList<>();
+		for (StaffTimedPlaceHolder ph : timedPlaceHolders) {
+			if (ph.getTime().isContainedIn(bar.getTime(), bar.getEndTime())) {
+				result.add(ph);
+			}
+		}
+		return result;
+	}
+
+	/*FRACCIONES public List<StaffTimedPlaceHolder> getStaffPlaceHoldersWithOnsetWithin(Bar bar) throws IM3Exception {
+		ArrayList<StaffTimedPlaceHolder> result = new ArrayList<>();
+		for (ISymbolInLayer lcs : this.layerSymbols) {
+			if (lcs instanceof StaffTimedPlaceHolder && lcs.getTime() >= bar.getTime() && lcs.getTime() < bar.getEndTime()) {
+				result.add((StaffTimedPlaceHolder) lcs);
+			}
+		}
+		return result;
+	}*/
+}

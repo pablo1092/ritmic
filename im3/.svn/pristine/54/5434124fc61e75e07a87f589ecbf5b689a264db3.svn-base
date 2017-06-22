@@ -1,0 +1,154 @@
+package es.ua.dlsi.im3.core.score;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ * It is just a horizontal division of the song It may be computed of
+ * specifically added to the song
+ *
+ * @author drizo
+ * @date 03/06/2011
+ *
+ */
+public class Bar extends TimedElementWithNotationInStaves<Barline>  implements Comparable<Bar> {
+	/**
+	 * Measure number
+	 */
+	private int number;
+
+	/**
+	 * @param imeasureNumber
+	 */
+	public Bar(ScoreSong song, int imeasureNumber) {
+		this.number = imeasureNumber;
+		this.song = song;
+	}
+
+	/**
+	 * @param imeasureNumber
+	 * @param imeasureNumber
+	 */
+	/*
+	 * public Bar(long time, int imeasureNumber) , Meter ts, Key ks) {
+	 * super(time); this.number = imeasureNumber;
+	 * this.timeSignature = ts; this.keySignature = ks; }
+	 */
+	/**
+	 * @return the number
+	 */
+	public final int getNumber() {
+		return number;
+	}
+
+	/**
+	 * @param number
+	 *            the number to set
+	 */
+	public final void setNumber(int number) {
+		this.number = number;
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		/*
+		 * return "Bar [number=" + number + ", timeSignature=" + timeSignature +
+		 * ", keySignature=" + keySignature + ", time=" + time + "]";
+		 */
+		return "Bar [number=" + number + "]";
+	}
+
+	// TODO Test
+	/**
+	 *
+	 * @return End time in ticks
+	 * @throws IM3Exception
+	 */
+	public Time getDuration() throws IM3Exception {
+		Meter ts = song.getActiveMeterAtBar(this);
+		return ts.getMeasureDuration();
+	}
+
+	// TODO Test
+	/**
+	 *
+	 * @return ScoreDuration in ticks. This time is not included in the
+	 *         bar, it belongs to the next one
+	 * @throws IM3Exception
+	 */
+	public Time getEndTime() throws IM3Exception {
+		if (time == null) {
+			throw new IM3Exception("The time has not been set yet");
+		}
+		if (song == null) {
+			throw new IM3Exception("The song is nulll, cannot compute the end time");
+		}
+		Meter ts = song.getActiveMeterAtBar(this);
+		return getTime().add(ts.getMeasureDuration());
+	}
+
+	/*
+	 * @Override public void move(long offset) throws IM3Exception { if (time ==
+	 * null) { throw new IM3Exception("The time has not been set yet"); }
+	 * setTime(this.time.getTime() + offset); }
+	 */
+
+	@Override
+	public int compareTo(Bar b) {
+		return number - b.number;
+	}
+
+	@Override
+	public int hashCode() {
+		int hash = 5;
+		hash = 59 * hash + this.number;
+		return hash;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		final Bar other = (Bar) obj;
+		return this.number == other.number;
+	}
+
+	/**
+	 * If the onset of the note lies inside the time span of the bar
+	 * 
+	 * @param element
+	 * @return
+	 * @throws es.ua.dlsi.im3.IM3Exception
+	 *             When the time of the element is not defined
+	 */
+	public boolean containsInTime(ITimedElement element) throws IM3Exception {
+		return element.getTime().compareTo(this.getTime()) >= 0
+				&& element.getTime().compareTo(this.getEndTime()) < 0;
+	}
+
+	public final void setSong(ScoreSong song) {
+		this.song = song;
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "M";
+	}
+
+	@Override
+	protected Barline createNotation(NotationType notationType, Staff staff) throws IM3Exception {
+		Barline bl = new Barline(this, staff);
+		bl.setTime(this.getEndTime());
+		return bl;
+	}
+
+	
+}

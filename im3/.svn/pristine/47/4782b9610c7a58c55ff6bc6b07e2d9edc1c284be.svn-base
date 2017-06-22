@@ -1,0 +1,194 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map.Entry;
+
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.io.ImportException;
+
+import java.util.Objects;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+/**
+ * Abstract model song. Used to import from a variety of sources that contain
+ * different levels of musical or graphical detail
+ * @author drizo
+ *
+ */
+public class AMSong {	
+	AMMovement movement;
+	AMWork work;
+	AMIdentification identification;
+	/**
+	 * Used to complete default values when not present
+	 */
+	AMKey firstKey;
+	/**
+	 * Used to complete default values when not present
+	 */
+	AMTimeSignature firstMeter;	
+	/**
+	 * Not all parts are specified inside part groups
+	 */
+	SortedMap<String, AMPart> parts;
+	/**
+	 * Sometimes the parts are grouped 
+	 */
+	List<AMPartGroup> partGroups;	
+	/**
+	 * Sometimes the input is given in systems
+	 */
+	List<AMSystem> systems;
+
+	SortedMap<Time, AMMeasure> measures;
+	
+	/**
+	 * They may be inserted at song level (MEI) rather than at part level (MusicXML)
+	 */
+	List<AMTimeSignature> timeSignatures;
+	
+	List<AMKey> keys;
+	
+	public AMSong() {
+		parts = new TreeMap<>();
+		measures = new TreeMap<>();		
+	}
+	
+	public SortedMap<Time, AMMeasure> getMeasures() {
+		return measures;
+	}
+	
+	public List<AMMeasure> getMeasuresAsList() {		
+		ArrayList<AMMeasure> result = new ArrayList<>();
+		for (AMMeasure m: measures.values()) {
+			result.add(m);
+		}
+		return result;
+	}
+
+
+	public List<AMPartGroup> getPartGroups() {
+		return partGroups;
+	}
+
+	public void addPartGroup(AMPartGroup partGroup) {
+		if (partGroups == null) {
+			partGroups = new ArrayList<>();
+		}
+		partGroups.add(partGroup);
+	}
+	public AMPartGroup getLastPartGroup() throws ImportException {
+		if (partGroups == null || partGroups.isEmpty()) {
+			throw new ImportException("Expected at least one part group");
+		}
+		return partGroups.get(partGroups.size()-1);
+	}	
+	public void addPart(AMPart part) {
+		parts.put(part.getID(), part);
+	}
+	public SortedMap<String, AMPart> getParts() {
+		return parts;
+	}
+	
+	public AMPart getPart(String ID) throws ImportException {
+		AMPart part = parts.get(ID);
+		if (part == null) {
+			throw new ImportException("Part with ID '" + ID + "' not found");
+		}
+		return part;
+	}
+	
+	public AMMovement getMovement() {
+		return movement;
+	}
+	public void setMovement(AMMovement movement) {
+		this.movement = movement;
+	}
+	public AMWork getWork() {
+		return work;
+	}
+	public void setWork(AMWork work) {
+		this.work = work;
+	}
+	public AMIdentification getIdentification() {
+		return identification;
+	}
+	public void setIdentification(AMIdentification identification) {
+		this.identification = identification;
+	}
+	@Override
+	public String toString() {
+		return "AMSong [identification=" + identification + ", movement=" + movement + ", work=" + work + ", systems="
+				+ systems + ", partGroups=" + partGroups + ", parts=" + parts + "]";
+	}
+	/**
+	 * All not imported symbols that should be inferred must be completed
+	 * @throws ImportException 
+	 */
+	public void completeMissingElements() throws ImportException {
+		if (parts != null) {
+			for (AMPart part: parts.values()) {
+				part.completeMissingElements();
+			}
+		}
+	}
+
+	public void addMeasure(AMMeasure measure) throws ImportException {
+		AMMeasure previousExisting = measures.get(measure.getTime());
+		if (previousExisting == null) {
+			measures.put(measure.getTime(), measure);
+		} else {
+			if (!Objects.equals(previousExisting.getNumber(), measure.getNumber())) {
+				throw new ImportException("There was another measure at time " + measure.getTime() + " with number " + 
+				previousExisting.getNumber() + " while inserting another with number " + measure.getNumber());
+			}
+		}
+	}
+	
+	public AMMeasure getMeasure(double time) {
+		return measures.get(time);
+	}
+	
+	public int getNumberOfMeasures() {
+		return measures.size();
+	}
+	
+	/**
+	 * @return null if there are not 2 measures
+	 */
+	public Time getSecondMeasureTime() {
+		if (measures.size() <2) {
+			return null;
+		} else {
+			Iterator<Entry<Time, AMMeasure>> iter = measures.entrySet().iterator();
+			iter.next();
+			return iter.next().getValue().getTime();
+		}
+	}
+
+	public void addTimeSignature(AMTimeSignature ts) {
+		if (timeSignatures == null) {
+			timeSignatures = new ArrayList<>();
+		}
+		timeSignatures.add(ts);
+	}
+	public void addKey(AMKey ts) {
+		if (keys == null) {
+			keys = new ArrayList<>();
+		}
+		keys.add(ts);
+	}
+
+	public List<AMTimeSignature> getTimeSignatures() {
+		return timeSignatures;
+	}
+
+	public List<AMKey> getKeys() {
+		return keys;
+	}
+
+}
+

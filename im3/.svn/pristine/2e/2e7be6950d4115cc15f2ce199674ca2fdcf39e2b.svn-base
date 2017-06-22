@@ -1,0 +1,42 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+
+/**
+ * It does not contain how many lines it contains. They must be deduced from the content
+ * @author drizo
+ *
+ */
+public class AMBeam {
+	String number;
+	boolean repeater;
+	
+	ArrayList<AMDurationalSymbol> elements;
+	
+	public AMBeam(String number) {
+		this.number = number;
+		elements = new ArrayList<>();
+	}
+
+	public String getNumber() {
+		return number;
+	}
+
+	public boolean isRepeater() {
+		return repeater;
+	}
+
+	public void setRepeater(boolean repeater) {
+		this.repeater = repeater;
+	}
+
+	public void addNoteOrChord(AMDurationalSymbol noc) {
+		this.elements.add(noc);
+	}
+
+	@Override
+	public String toString() {
+		return "AMBeam [number=" + number + ", repeater=" + repeater + "]";
+	}
+	
+}

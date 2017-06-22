@@ -1,0 +1,93 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+
+import es.ua.dlsi.im3.core.score.Time;
+
+public class AMStaffPlaceHolder extends AMTimedElement implements IAMElementWithStaff {
+	String layer;
+	public AMStaffPlaceHolder(int originalPosition, Time time) {
+		super(originalPosition, time);
+	}
+
+	AMStaff staff;
+	private ArrayList<IAMMarker> markers;
+	
+	@Override
+	public AMStaff getStaff() {
+		return staff;
+	}
+
+	@Override
+	public void setStaff(AMStaff staff) {
+		this.staff = staff;
+		
+	}
+
+	public String getLayer() {
+		return layer;
+	}
+
+	public void addMarker(IAMMarker d) {
+		if (markers == null) {
+			markers = new ArrayList<>();
+		}
+		markers.add(d);
+	}
+
+	public ArrayList<IAMMarker> getMarkers() {
+		return markers;
+	}
+
+	public void setLayer(String content) {
+		this.layer = content;
+		
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + ((layer == null) ? 0 : layer.hashCode());
+		result = prime * result + ((markers == null) ? 0 : markers.hashCode());
+		result = prime * result + ((staff == null) ? 0 : staff.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMStaffPlaceHolder other = (AMStaffPlaceHolder) obj;
+		if (layer == null) {
+			if (other.layer != null)
+				return false;
+		} else if (!layer.equals(other.layer))
+			return false;
+		if (markers == null) {
+			if (other.markers != null)
+				return false;
+		} else if (!markers.equals(other.markers))
+			return false;
+		if (staff == null) {
+			if (other.staff != null)
+				return false;
+		} else if (!staff.equals(other.staff))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "AMStaffPlaceHolder [layer=" + layer + ", staff=" + staff + ", time= " + time + "]";
+	}
+	
+	
+	
+	
+	
+}

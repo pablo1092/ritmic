@@ -1,0 +1,1184 @@
+/*
+ * Copyright (C) 2017 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score.io.mei;
+
+import java.util.HashMap;
+import java.util.HashSet;
+
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.apache.commons.lang3.math.Fraction;
+import org.xml.sax.SAXException;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.core.score.Accidentals;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.AtomPitch;
+import es.ua.dlsi.im3.core.score.Beam;
+import es.ua.dlsi.im3.core.score.Clef;
+import es.ua.dlsi.im3.core.score.DynamicMark;
+import es.ua.dlsi.im3.core.score.Measure;
+import es.ua.dlsi.im3.core.score.Meter;
+import es.ua.dlsi.im3.core.score.Mode;
+import es.ua.dlsi.im3.core.score.NotationType;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.HierarchicalIDGenerator;
+import es.ua.dlsi.im3.core.score.Key;
+import es.ua.dlsi.im3.core.score.KeySignature;
+import es.ua.dlsi.im3.core.score.NoteNames;
+import es.ua.dlsi.im3.core.score.PitchClass;
+import es.ua.dlsi.im3.core.score.ScientificPitch;
+import es.ua.dlsi.im3.core.score.ScorePart;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.ScoreLayer;
+import es.ua.dlsi.im3.core.score.SingleChord;
+import es.ua.dlsi.im3.core.score.SingleNote;
+import es.ua.dlsi.im3.core.score.SingleRest;
+import es.ua.dlsi.im3.core.score.Staff;
+import es.ua.dlsi.im3.core.score.StaffTimedPlaceHolder;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.clefs.ClefC1;
+import es.ua.dlsi.im3.core.score.clefs.ClefC2;
+import es.ua.dlsi.im3.core.score.clefs.ClefC3;
+import es.ua.dlsi.im3.core.score.clefs.ClefC4;
+import es.ua.dlsi.im3.core.score.clefs.ClefC5;
+import es.ua.dlsi.im3.core.score.clefs.ClefEmpty;
+import es.ua.dlsi.im3.core.score.clefs.ClefF3;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4OttavaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4OttavaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4QuindicesimaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4QuindicesimaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefF5;
+import es.ua.dlsi.im3.core.score.clefs.ClefG1;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2OttavaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2OttavaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2QuindicesimaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2QuindicesimaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefPercussion;
+import es.ua.dlsi.im3.core.score.clefs.ClefTab;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkForte;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkFortePossible;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkFortissimo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkMezzoForte;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkMezzoPiano;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPianissimo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPiano;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPianoPossible;
+import es.ua.dlsi.im3.core.score.io.XMLSAXImporter;
+import es.ua.dlsi.im3.core.score.mensural.meters.MensuralMeter;
+import es.ua.dlsi.im3.core.score.mensural.meters.Perfection;
+import es.ua.dlsi.im3.core.score.meters.FractionalMeter;
+import es.ua.dlsi.im3.core.score.meters.MeterCommonTime;
+import es.ua.dlsi.im3.core.score.meters.MeterCutTime;
+import es.ua.dlsi.im3.core.score.staves.Pentagram;
+import es.ua.dlsi.im3.core.score.staves.PercussionStaff;
+import es.ua.dlsi.im3.io.ImportException;
+
+//TODO Anacrusis, fillMissingElements
+/**
+ * MusicXML implemented with SAX to improve performance over JAXB.
+ * 
+ * @author drizo
+ */
+public class MEISAXImporter extends XMLSAXImporter {
+
+	class PendingConnector {
+		Measure measure;
+		String tstamp;
+		String tstamp2;
+		String startid;
+		String endid;
+		String tag;
+		String content;
+		Staff staff;
+		public ScoreLayer voice;
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result + ((content == null) ? 0 : content.hashCode());
+			result = prime * result + ((endid == null) ? 0 : endid.hashCode());
+			result = prime * result + ((measure == null) ? 0 : measure.hashCode());
+			result = prime * result + ((staff == null) ? 0 : staff.hashCode());
+			result = prime * result + ((startid == null) ? 0 : startid.hashCode());
+			result = prime * result + ((tag == null) ? 0 : tag.hashCode());
+			result = prime * result + ((tstamp == null) ? 0 : tstamp.hashCode());
+			result = prime * result + ((tstamp2 == null) ? 0 : tstamp2.hashCode());
+			return result;
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			PendingConnector other = (PendingConnector) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (content == null) {
+				if (other.content != null)
+					return false;
+			} else if (!content.equals(other.content))
+				return false;
+			if (endid == null) {
+				if (other.endid != null)
+					return false;
+			} else if (!endid.equals(other.endid))
+				return false;
+			if (measure == null) {
+				if (other.measure != null)
+					return false;
+			} else if (!measure.equals(other.measure))
+				return false;
+			if (staff == null) {
+				if (other.staff != null)
+					return false;
+			} else if (!staff.equals(other.staff))
+				return false;
+			if (startid == null) {
+				if (other.startid != null)
+					return false;
+			} else if (!startid.equals(other.startid))
+				return false;
+			if (tag == null) {
+				if (other.tag != null)
+					return false;
+			} else if (!tag.equals(other.tag))
+				return false;
+			if (tstamp == null) {
+				if (other.tstamp != null)
+					return false;
+			} else if (!tstamp.equals(other.tstamp))
+				return false;
+			if (tstamp2 == null) {
+				if (other.tstamp2 != null)
+					return false;
+			} else if (!tstamp2.equals(other.tstamp2))
+				return false;
+			return true;
+		}
+		private MEISAXImporter getOuterType() {
+			return MEISAXImporter.this;
+		}
+		@Override
+		public String toString() {
+			return "PendingConnector [measure=" + measure.getNumber() + 
+					", tstamp=" + tstamp + ", tstamp2=" + tstamp2 + ", startid="
+					+ startid + ", endid=" + endid + ", tag=" + tag + ", content=" + content + ", staff=" 
+					+ (staff!=null?staff.getNumberIdentifier():"null") +
+					"]";
+		}
+	}
+	
+	static final HashMap<String, Figures> FIGURES = new HashMap<>();
+	static {
+		FIGURES.put("maxima", Figures.MAXIMA);
+		FIGURES.put("longa", Figures.LONGA);
+		FIGURES.put("brevis", Figures.BREVE);
+		FIGURES.put("semibrevis", Figures.SEMIBREVE);
+		FIGURES.put("minima", Figures.MINIMA);
+		FIGURES.put("semiminima", Figures.SEMINIMA);
+		FIGURES.put("fusa", Figures.FUSA);
+		FIGURES.put("long", Figures.QUADRUPLE_WHOLE);
+		FIGURES.put("breve", Figures.DOUBLE_WHOLE);
+		FIGURES.put("1", Figures.WHOLE);
+		FIGURES.put("2", Figures.HALF);
+		FIGURES.put("4", Figures.QUARTER);
+		FIGURES.put("8", Figures.EIGHTH);
+		FIGURES.put("16", Figures.SIXTEENTH);
+		FIGURES.put("32", Figures.THIRTY_SECOND);
+		FIGURES.put("64", Figures.SIXTY_FOURTH);
+		FIGURES.put("128", Figures.HUNDRED_TWENTY_EIGHTH);
+		FIGURES.put("256", Figures.TWO_HUNDRED_FIFTY_SIX);
+	}
+	
+	protected Figures getFigure(String content, HashMap<String, String> elementAttributes) throws ImportException {
+		Figures figure = FIGURES.get(content);
+		if (figure == null) {
+			throw new ImportException("Unknown figure type: " + content);
+		}
+		return figure;
+	}	
+	
+	HashMap<String, Object> xmlIDs;
+	HashSet<PendingConnector> pendingConnectors;
+	String titleType;
+	// they may be used in handleElementContent, not always initialized, only for elements that we know will use them
+	//protected HashMap<String, String> attributesMap;
+	HashMap<String, Time> currentTime;
+	private Measure currentMeasure;
+	
+	ScorePart currentScorePart;
+	Clef lastClef;
+	Staff lastStaff;
+	ScoreLayer lastVoice;
+	SingleNote currentNote;
+	private HashMap<String, AtomPitch> currentTies; // map code (stack + layer + note) - AtomPitch
+	private String personRole;
+	int staffCount=0;
+	int layerCount=0;
+	
+	//TimeSignature lastTimeSignature;
+	Time lastTime;
+	StaffTimedPlaceHolder currentStaffPlaceHolder;
+	HashMap<Time, StaffTimedPlaceHolder> placeHolders;
+	protected boolean importingMusic = false;
+	Beam currentBeam;
+	private SingleChord lastChord;
+	private Time dynamTime;
+	private boolean inOssia = false;
+	private HashMap<String, Staff> staffNumbers;
+	HierarchicalIDGenerator hierarchicalIdGenerator;
+	private AtomPitch lastAtomPitch;
+	private HashMap<String, ScoreLayer> layers;
+	private Meter lastMeter;
+	
+	@Override
+	protected void init() throws ParserConfigurationException, SAXException {
+		song = new ScoreSong(); //TODO ¿Y si es una colección?
+		staffNumbers = new HashMap<>();
+		currentTies = new HashMap<>();
+		currentTime = new HashMap<>();
+		xmlIDs = new HashMap<>();
+		pendingConnectors = new HashSet<>();
+		placeHolders = new HashMap<>();
+		lastTime = Time.TIME_ZERO;
+		hierarchicalIdGenerator = new HierarchicalIDGenerator();
+		layers = new HashMap<>();
+	}
+	
+	private String getLayerCode() throws ImportException {
+		if (lastStaff == null) {
+			throw new ImportException("lastStaff=null");
+		}
+		if (lastVoice == null) {
+			throw new ImportException("lastVoice=null");
+		}
+		//String code = lastStaff==null?"_":lastStaff.hashCode() + "_" + lastVoice.hashCode();
+		String code = lastStaff.hashCode() + "_" + lastVoice.hashCode();
+		return code;
+	}
+	private Time getCurrentTime() throws ImportException {
+		if (lastVoice == null) { // e.g. staffDef where no time is defined yet
+			return Time.TIME_ZERO; 
+		}
+		String code = getLayerCode();
+		Time time = currentTime.get(code);
+		if (time == null) {
+			currentTime.put(code, lastTime);
+			return lastTime;
+		} else {
+			return time;
+		}
+	}
+	
+	private void setCurrentTime(Time time) throws ImportException {
+		String code = getLayerCode();
+		currentTime.put(code, time);
+	}
+	
+	private void updateCurrentTime() throws ImportException, IM3Exception {
+		setCurrentTime(lastVoice.getDuration());
+	}
+	
+	@Override
+	public void doHandleOpenElement(String element, HashMap<String, String> attributesMap) throws ImportException {		
+		String number;
+		String label;
+		String dotsStr;
+		int dots;
+		String dur;
+		Figures figure;
+		String xmlid;
+		String keySig;
+		String keyMode;
+		String clefLine;
+		String clefShape;
+		String tstamp;
+		//String tstamp2;
+		String staffNumber;
+		String layerNumber;
+		//Time time;
+		Staff elementStaff;
+		PendingConnector pendingConnector;
+		
+		//attributesMap = getAttributes(element, saxAttributes);
+		try {
+			if (element.equals("music")) {
+				importingMusic = true; //TODO gestionar esto de otra forma - ¿estados? - ¿consume() como en eventos JavaFX?
+			} else if (importingMusic) { // avoid parse other MEI extensions such as the hierarchical analysis here
+				String accid;
+				switch (element) {
+				case "work":
+					//TODO song.setWo 
+					break;
+				case "title":
+					titleType = getOptionalAttribute(attributesMap, "type");
+					break;
+				case "persName":
+					personRole = getOptionalAttribute(attributesMap, "role");
+					break;
+				case "ossia":
+					inOssia = true;
+					break;
+				case "scoreDef":
+					String meterCount = getOptionalAttribute(attributesMap, "meter.count");
+					String meterUnit = getOptionalAttribute(attributesMap, "meter.unit");
+					String meterSym = getOptionalAttribute(attributesMap, "meter.sym");
+					if (meterCount != null || meterUnit != null || meterSym != null) {
+						lastMeter = processMeter(lastTime, attributesMap, meterSym, meterCount, meterUnit); //position not used
+						song.addMeter(lastTime, lastMeter);
+					}
+					keySig = getOptionalAttribute(attributesMap, "key.sig");
+					keyMode = getOptionalAttribute(attributesMap, "key.mode");
+					if (keySig != null) {
+						song.addKey(lastTime, processKey(attributesMap, keySig, keyMode));
+					}
+					break;
+					//TODO staff groups (ej. garison.mei)
+				case "staffGrp":
+					label = getOptionalAttribute(attributesMap, "label");
+					//TODO
+					currentScorePart = new ScorePart(song, song.getParts().size()+1); //TODO
+					currentScorePart.setName(label);
+					song.addPart(currentScorePart);
+					break;
+				case "staffDef": 
+					lastStaff = processStaff(attributesMap);
+					clefLine = getOptionalAttribute(attributesMap, "clef.line");
+					clefShape = getOptionalAttribute(attributesMap, "clef.shape");
+					if (clefLine != null || clefShape != null) {
+						processClef(clefLine, clefShape, getCurrentTime(), 
+								getOptionalAttribute(attributesMap, "clef.dis"),
+								getOptionalAttribute(attributesMap, "clef.dis.place")
+								);
+					}
+					//TODO Instrumentos transpositores
+					keySig = getOptionalAttribute(attributesMap, "key.sig");
+					keyMode = getOptionalAttribute(attributesMap, "key.mode");
+					if (keySig != null) {
+						Time t = getCurrentTime();
+						Key key = processKey(attributesMap, keySig, keyMode);
+						song.addKey(t, key);
+						//TODO URGENT Key signature 
+						KeySignature ks = new KeySignature(null, key, lastStaff);
+						lastStaff.addKeySignature(ks);
+						//TODO !!! transpositores - a veces la key es = que la de la song
+					}
+					
+					label = getOptionalAttribute(attributesMap, "label");
+					lastStaff.setName(label);
+					
+					processPossibleMensuralMeter(attributesMap);				
+					break;
+				case "mensur":
+					processPossibleMensuralMeter(attributesMap);
+					break;				
+				case "measure":
+					staffCount=0;			
+					number = getOptionalAttribute(attributesMap, "n");
+					xmlid = getOptionalAttribute(attributesMap, "xml:id");
+					Integer n = null;
+					if (number != null) {
+						n = Integer.parseInt(number);
+					}
+					updateTimesGivenMeasure();
+					currentMeasure = new Measure(song, n);
+					Time t = getCurrentTime();
+					xmlIDs.put(xmlid, currentMeasure);
+					song.addMeasure(t, currentMeasure);
+					break;
+				case "staff":
+					staffCount++;	
+					layerCount=0;
+					number = getOptionalAttribute(attributesMap, "n");
+					lastStaff = findStaff(number);
+					break;
+				case "layer":
+					layerCount++;
+					number = getOptionalAttribute(attributesMap, "n");
+					lastVoice = processLayer(number);
+					break;
+				case "beam":
+					//TODO currentBeam = new Beam(null, null, null, n);
+					break;
+				case "chord":
+					//TODO stem dir
+					xmlid = getOptionalAttribute(attributesMap, "xml:id");
+					xmlIDs.put(xmlid, lastChord);
+					dotsStr = getOptionalAttribute(attributesMap, "dots");
+					dots = dotsStr==null?0:Integer.parseInt(dotsStr);
+					dur = getAttribute(attributesMap, "dur");
+					figure = getFigure(dur, attributesMap);
+					
+					//if (currentBeam != null) {
+					//	currentBeam.addNoteOrChord(currentNote);
+					//}
+					
+					lastChord = new SingleChord(figure, dots);
+					lastChord.setStaff(lastStaff);
+					lastChord.setTime(getCurrentTime());
+					song.getIdManager().assignID(xmlid, lastChord);
+					lastVoice.add(lastChord);
+					updateCurrentTime();
+					break;
+				case "note":
+					xmlid = getOptionalAttribute(attributesMap, "xml:id");
+					String staffChange = getOptionalAttribute(attributesMap, "staff");
+					
+					if (staffChange != null) {
+						elementStaff = findStaff(staffChange);
+					} else {
+						elementStaff = lastStaff;
+					}
+					dotsStr = getOptionalAttribute(attributesMap, "dots");
+					dots = dotsStr==null?0:Integer.parseInt(dotsStr);
+					dur = getOptionalAttribute(attributesMap, "dur");
+					figure = getFigure(dur, attributesMap);
+					
+					// scientific pitch
+					String accidGes = getOptionalAttribute(attributesMap, "accid.ges");
+					accid = getOptionalAttribute(attributesMap, "accid");
+					String oct = getOptionalAttribute(attributesMap, "oct");
+					String pname = getOptionalAttribute(attributesMap, "pname");
+					
+					PitchClass pc = new PitchClass(NoteNames.valueOf(pname.toUpperCase()));
+					Accidentals writtenAccidental = null;
+					
+					if (accidGes != null) {
+						writtenAccidental = accidToAccidental(accidGes);
+						pc.setAccidental(writtenAccidental);
+					} 
+					
+					if (accid != null) {
+						Accidentals acc = accidToAccidental(accid);
+						if (writtenAccidental != null && acc != writtenAccidental) {
+							throw new ImportException("Written accidental (" + writtenAccidental + ") inconsistent with performed accidental (" + acc + ")");
+						}
+						pc.setAccidental(acc);						
+					}
+					
+					ScientificPitch sp = new ScientificPitch(pc, Integer.parseInt(oct));
+					
+					//TODO
+					//currentNote.setStemDirection(parseStemDir(getOptionalAttribute(attributesMap, "stem.dir")));
+					
+					if (lastChord != null) {
+						AtomFigure lastChordFigure = lastChord.getFigures().get(0);
+						if (!lastChordFigure.getFigure().equals(figure) || lastChordFigure.getDots() != dots) {
+							throw new ImportException("Cannot import a chord with different figure durations");
+						}
+						lastAtomPitch = lastChord.addPitch(sp);
+						if (elementStaff != lastStaff) {
+							lastAtomPitch.setStaffChange(elementStaff);
+						}
+						lastAtomPitch.setWrittenExplicitAccidental(writtenAccidental);
+					} else {
+						//if (dur == null) {
+						//	throw new ImportException("Cannot import note not in chord without dur");
+						//}
+						currentNote = new SingleNote(getFigure(dur, attributesMap), dots, sp);
+						lastAtomPitch = currentNote.getAtomPitch();
+						if (elementStaff != lastStaff) {
+							lastAtomPitch.setStaffChange(elementStaff);
+						}
+						lastAtomPitch.setWrittenExplicitAccidental(writtenAccidental);
+						song.getIdManager().assignID(xmlid, currentNote);
+						currentNote.setTime(getCurrentTime());
+						lastVoice.add(currentNote);
+						updateCurrentTime();
+						xmlIDs.put(xmlid, currentNote);
+						//if (currentBeam != null) {
+						//	currentBeam.addNoteOrChord(currentNote);
+						//}
+					}
+					
+					String tie = getOptionalAttribute(attributesMap, "tie");
+					if (tie != null) {
+						handleTie(tie);
+					}
+					
+					break;
+				case "accid":
+					accid = getOptionalAttribute(attributesMap, "accid");
+					accidGes = getOptionalAttribute(attributesMap, "accid.ges");
+					
+					writtenAccidental = null;
+					
+					if (accidGes != null) {
+						writtenAccidental = accidToAccidental(accidGes);
+						currentNote.getAtomPitch().setWrittenExplicitAccidental(writtenAccidental);
+					} 
+					
+					if (accid != null) {
+						Accidentals acc = accidToAccidental(accid);
+						if (writtenAccidental != null && acc != writtenAccidental) {
+							throw new ImportException("Written accidental (" + writtenAccidental + ") inconsistent with performed accidental (" + acc + ")");
+						}
+						currentNote.setAccidental(acc);						
+					}
+					break;
+					
+				case "rest":
+					xmlid = getOptionalAttribute(attributesMap, "xml:id");
+					dotsStr = getOptionalAttribute(attributesMap, "dots");
+					dots = dotsStr==null?0:Integer.parseInt(dotsStr);
+					dur = getOptionalAttribute(attributesMap, "dur");
+					figure = getFigure(dur, attributesMap);
+					
+					SingleRest rest = new SingleRest(figure, dots);  
+					song.getIdManager().assignID(xmlid, rest);
+					xmlIDs.put(xmlid, rest);
+					lastVoice.add(rest);
+					updateCurrentTime();
+					rest.setStaff(lastStaff);
+					break;			
+				case "clef":
+					//TODO No sé para qué vale el parámetro staff aquí, cuando está dentro de uno ya...
+					clefLine = getOptionalAttribute(attributesMap, "line");
+					clefShape = getOptionalAttribute(attributesMap, "shape");				
+					tstamp = getOptionalAttribute(attributesMap, "tstamp");
+					Time clefTime;
+					if (tstamp != null) {
+						clefTime = decodeTStamp(currentMeasure, attributesMap);
+					} else {
+						clefTime = getCurrentTime();
+					}
+					//tstamp = getOptionalAttribute(attributesMap, "tstamp");
+					//double clefTime = getCurrentTime();
+					//if (tstamp != null) {
+					//	clefTime += Double.parseDouble(tstamp);
+					//}
+					processClef(clefLine, clefShape, clefTime, getOptionalAttribute(attributesMap, "dis"),
+							getOptionalAttribute(attributesMap, "dis.place"));
+					break;
+				case "tie":
+					staffNumber = getOptionalAttribute(attributesMap, "staff");
+					pendingConnector = new PendingConnector();
+					pendingConnector.tag = element;
+					pendingConnector.measure = currentMeasure;
+					pendingConnector.startid = getAttribute(attributesMap, "startid");
+					pendingConnector.endid = getAttribute(attributesMap, "endid");
+					if (pendingConnectors.contains(pendingConnector)) {
+						throw new ImportException("Duplicating pending connector: " + pendingConnector);
+					}
+					pendingConnectors.add(pendingConnector);
+					break;		
+				case "phrase": 
+				case "slur":
+				case "hairpin":
+					staffNumber = getOptionalAttribute(attributesMap, "staff");
+					layerNumber = getOptionalAttribute(attributesMap, "layer");
+					pendingConnector = new PendingConnector();
+					pendingConnector.staff = findStaff(staffNumber);
+					pendingConnector.tag = element;
+					pendingConnector.measure = currentMeasure;
+					pendingConnector.voice = processLayer(layerNumber);
+					pendingConnector.tstamp = getOptionalAttribute(attributesMap, "tstamp");
+					pendingConnector.tstamp2 = getOptionalAttribute(attributesMap, "tstamp2");
+					pendingConnector.startid = getOptionalAttribute(attributesMap, "startid");
+					pendingConnector.endid = getOptionalAttribute(attributesMap, "endid");
+					if (element.equals("hairpin")) {
+						pendingConnector.content = getAttribute(attributesMap, "form");
+					}
+					if (pendingConnectors.contains(pendingConnector)) {
+						throw new ImportException("Duplicating pending connector: " + pendingConnector);
+					}
+					pendingConnectors.add(pendingConnector);
+					break;		
+				case "dynam":
+					dynamTime = decodeTStamp(currentMeasure, attributesMap);
+					staffNumber = getAttribute(attributesMap, "staff");
+					lastStaff = findStaff(staffNumber);
+					break;
+				/*case "meter":
+					attributesMap = getAttributes(element, saxAttributes);
+					lastTimeSignature = new AMTimeSignature(originalPosition, time)
+					meter = lastTimeSignature.getMeter();*/
+					/*case "part":
+						attributes = getAttributes(element, saxAttributes);				
+						String label = getAttribute(attributes, "label");
+						break;*/
+				}			
+			}
+		} catch (Exception e) {
+			throw new ImportException(e);
+		}
+	}
+	
+	private ScoreLayer processLayer(String number) throws IM3Exception {
+		String voiceNumber = lastStaff.getNumberIdentifier() + "_" + number;
+		ScoreLayer voice = layers.get(voiceNumber);
+		if (voice == null) {
+			voice = currentScorePart.addScoreLayer();
+			lastStaff.addLayer(voice);
+			layers.put(voiceNumber, voice);
+		}
+		return voice;
+	}
+
+	private Staff processStaff(HashMap<String, String> attributesMap) throws ImportException, IM3Exception {
+		Staff staff;
+		String number = getOptionalAttribute(attributesMap, "n");
+		String lines = getOptionalAttribute(attributesMap, "lines");
+		String label = getOptionalAttribute(attributesMap, "label");
+		
+		if (lines == null || lines.equals("5")) {
+				staff = new Pentagram(song, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else if (lines.equals("1")) {
+				staff = new PercussionStaff(song, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else {
+				throw new ImportException("Unimplemented staves with " + lines + " lines");
+		}
+		staffNumbers.put(number, staff);
+		staff.setName(label);
+		staff.setOssia(inOssia);
+		song.addStaff(staff);
+		return staff;	
+	}
+
+	private Staff findStaff(String number) throws ImportException {
+		Staff result = staffNumbers.get(number);
+		if (result == null) {
+			throw new ImportException("Cannot find staff with number '" + number + "'");
+		}
+		return result;
+	}
+
+	private Meter processMeter(Time time, HashMap<String, String> attributesMap, String meterSym, String meterUnit, 
+			String meterCount) throws ImportException {
+		Meter meter = null;
+		
+		if (meterSym != null) {
+			switch (meterSym) {
+				case "common":
+					meter = new MeterCommonTime();
+					break;
+				case "cut":
+					meter = new MeterCutTime();
+					break;
+				default:
+					throw new ImportException("Unknown symbol type for meter: '" + meterSym + "'");
+			}
+		} else {
+			if (meterCount == null || meterUnit == null) {
+				throw new ImportException("Missing beats or beat type in meter");
+			}
+			meter = new FractionalMeter(Integer.parseInt(meterCount), Integer.parseInt(meterUnit)); 
+		}
+		return meter;
+	}
+
+	private void processPossibleMensuralMeter(HashMap<String, String> attributesMap) throws ImportException, IM3Exception {
+		String modusmaiorStr = getOptionalAttribute(attributesMap, "modusmaior");
+		String modusminorStr = getOptionalAttribute(attributesMap, "modusminor");
+		String tempusStr = getOptionalAttribute(attributesMap, "tempus");
+		String prolatioStr = getOptionalAttribute(attributesMap, "prolatio");
+		if (modusmaiorStr != null || modusminorStr != null || tempusStr != null || prolatioStr != null) {
+			// mensural		
+			Perfection modusMaior = convertMeiMensuralPerfectionNumber(modusmaiorStr);
+			Perfection modusMinor = convertMeiMensuralPerfectionNumber(modusminorStr);
+			Perfection tempus = convertMeiMensuralPerfectionNumber(tempusStr);
+			Perfection prolatio = convertMeiMensuralPerfectionNumber(prolatioStr);
+			MensuralMeter meter = new MensuralMeter(modusMaior, modusMinor, tempus, prolatio);
+			
+			song.addMeter(getCurrentTime(), meter);
+			lastMeter = meter;
+			//TODO @sign, @orient, @slash, @dot (pag 144 de mei guidelines) - ver tb. mails foros
+		}
+	}
+	
+	private Perfection convertMeiMensuralPerfectionNumber(String number) throws ImportException {
+		if (number == null) {
+			return null;
+		} else if (number.equals("2")) {
+			return Perfection.imperfectum;
+		} else if (number.equals("3")) {
+			return Perfection.perfectum;
+		} else {
+			throw new ImportException("Invalid mensural meter perfection specification: " + number + ", should be null, 2, or 3");
+		}
+	}
+	
+
+	/*FRACCIONES private StemDirection parseStemDir(String stemDir) throws ImportException {
+		if (stemDir == null) {
+			return StemDirection.computed;
+		} else if (stemDir.equals("up")) {
+			return StemDirection.up;
+		} else if (stemDir.equals("down")) {
+			return StemDirection.down;
+		} else {
+			throw new ImportException("Invalid stem direction: " + stemDir);
+		}
+	}*/
+
+	public Time decodeTStamp(Measure measure, HashMap<String, String> attributesMap) throws ImportException {
+		String tstamp = getOptionalAttribute(attributesMap, "tstamp");
+		if (tstamp != null) {
+			return decodeTStamp(measure, tstamp);
+		}
+		throw new ImportException("Cannot get tstamp among attributes: " + attributesMap);
+	}
+	
+	public Time decodeTStamp(Measure measure, String tstamp) throws ImportException {
+		try {
+			return measure.getTime().add(new Time(Fraction.getFraction(Double.parseDouble(tstamp)-1)));
+		} catch (Exception e) {
+			throw new ImportException(e);
+		}
+	}
+
+	private void processClef(String clefLine, String clefShape, Time time, String octaveDisplace, String octaveDisplacePosition) throws ImportException, IM3Exception {
+		Integer octaveChange = null;
+		if (octaveDisplace != null) {
+			int idisp = Integer.parseInt(octaveDisplace);
+			if (idisp == 8) {
+				octaveChange = 1;
+			} else if (idisp == 15) {
+				octaveChange = 2;
+			} else {
+				throw new ImportException("Unsupported octave displace: " + octaveDisplace);
+			}
+			if (octaveDisplacePosition == null) {
+				throw new ImportException("Missing @clef.dis.place");
+			}
+			if (octaveDisplacePosition.equals("below")) {
+				octaveChange = -octaveChange;
+			} else if (octaveDisplacePosition.equals("below")) {
+				// nothing
+			} else {
+				throw new ImportException("Invalid @clef.dis.place");
+			}
+		}		
+		
+		lastClef = createClef(lastStaff.getNotationType(), clefShape, 
+				Integer.parseInt(clefLine), octaveChange);
+		lastClef.setTime(time);
+		lastStaff.addClef(lastClef);
+	}
+
+	protected Clef createClef(NotationType notationType, String shape, int line, Integer octaveChange)
+			throws ImportException {
+		Clef result;
+		switch (shape) {
+		case "G":
+			if (line == 1) {
+				result = new ClefG1();
+			} else if (line != 2) {
+				throw new ImportException("Invalid line " + line + " for G clef");
+			}
+			if (octaveChange != null) {
+				switch (octaveChange) {
+				case -2:
+					result = new ClefG2QuindicesimaBassa();
+					break;
+				case -1:
+					result = new ClefG2OttavaBassa();
+					break;
+				case 0:
+					result = new ClefG2();
+					break;
+				case 2:
+					result = new ClefG2QuindicesimaAlta();
+					break;
+				case 1:
+					result = new ClefG2OttavaAlta();
+					break;
+				default:
+					throw new ImportException("Invalid octave change " + octaveChange + " for G clef");
+				}
+			} else {
+				// if no clef octave change
+				result = new ClefG2();
+			}
+			break;
+		case "F":
+			switch (line) {
+			case 3:
+				result = new ClefF3();
+				break;
+			case 4:
+				if (octaveChange != null) {
+					switch (octaveChange) {
+					case -2:
+						result = new ClefF4QuindicesimaBassa();
+						break;
+					case -1:
+						result = new ClefF4OttavaBassa();
+						break;
+					case 0:
+						result = new ClefF4();
+						break;
+					case 2:
+						result = new ClefF4QuindicesimaAlta();
+						break;
+					case 1:
+						result = new ClefF4OttavaAlta();
+						break;
+					default:
+						throw new ImportException("Invalid octave change " + octaveChange + " for F clef");
+					}
+				} else {
+					// if no clef octave change
+					result = new ClefF4();
+				}
+				break;
+			case 5:
+				result = new ClefF5();
+				break;
+			default:
+				throw new ImportException("Invalid line " + line + " for F clef");
+			}
+		case "C":
+			switch (line) {
+			case 1:
+				result = new ClefC1();
+				break;
+			case 2:
+				result = new ClefC2();
+				break;
+			case 3:
+				result = new ClefC3();
+				break;
+			case 4:
+				result = new ClefC4();
+				break;
+			case 5:
+				result = new ClefC5();
+				break;
+			default:
+				throw new ImportException("Invalid line " + line + " for C clef");
+			}
+		case "percussion":
+			result = new ClefPercussion();
+			break;
+		case "tab":
+			result = new ClefTab();
+			break;
+		case "none":
+			result = new ClefEmpty();
+			break;
+		default:
+			throw new ImportException("Unknown clef pitch: " + shape);
+		}
+		result.setNotationType(notationType);
+		return result;
+	}	
+
+	private Key processKey(HashMap<String, String> attributesMap, String keySig, String keyMode) throws ImportException, IM3Exception {
+		int fifths; 
+		String xmlid = getOptionalAttribute(attributesMap, "xml:id");
+		if (keySig.equals("0")) {
+			fifths = 0;
+		} else {
+			fifths = Integer.parseInt(keySig.substring(0, keySig.length()-1));
+			char sharpOrFlat = keySig.charAt(keySig.length()-1);
+			if (sharpOrFlat == 's') {
+				// nothing
+			} else if (sharpOrFlat == 'f') {
+				fifths = -fifths;
+			} else {
+				throw new ImportException("Unkown key termination, expected 's' or 'f': " + keySig);
+			}
+		}
+		Mode mode;
+		if (keyMode == null || keyMode.equals("major")) {
+			mode = Mode.MAJOR;
+		} else if (keyMode.equals("minor")) {
+			mode = Mode.MINOR;
+		} else {
+			throw new ImportException("Invalid mode: '" + keyMode + "'");
+		}
+		Key key = new Key(fifths, mode);
+		song.getIdManager().assignID(xmlid, key);
+		return key;
+	}
+
+
+	private void handleTie(String type) throws ImportException, IM3Exception {		
+		String tieCode = lastStaff.hashCode() + "_" + lastVoice.hashCode() + "_" + lastAtomPitch.hashCode();
+
+		AtomPitch tiedFrom = currentTies.get(tieCode);
+		if (tiedFrom == null) {
+			if (type.equals("i")) {
+				currentTies.put(tieCode, lastAtomPitch);
+			} // else already inserted
+		} else {
+			if (type.equals("t")) {
+				Atom fromAtom = tiedFrom.getAtomFigure().getAtom();
+				lastVoice.remove(currentNote);
+				AtomFigure fig = fromAtom.addAtomFigure(currentNote.getAtomFigure().getFigure(), currentNote.getAtomFigure().getDots());
+				fig.addContinuationPitch(tiedFrom);
+				currentTies.remove(tieCode);
+			} // else, tie and tied are present
+			//TODO ¿necesario "m"? -- middle
+		}
+	}
+	
+	private Accidentals accidToAccidental(String accid) throws ImportException {
+		switch (accid) {
+		case "s":
+			return Accidentals.SHARP;
+		case "f":
+			return Accidentals.FLAT;
+		case "n":
+			return Accidentals.NATURAL;
+		case "ss":
+			return Accidentals.DOUBLE_SHARP;
+		case "ff":
+			return Accidentals.DOUBLE_FLAT;
+		case "tf":
+			return Accidentals.TRIPLE_FLAT;
+		default:
+			throw new ImportException("Invalid accid: " + accid);
+		}
+	}
+
+	@Override
+	public void handleElementContent(String currentElement, String content) throws ImportException {
+		try {
+			switch (currentElement) {
+				case "title": //TODO Gestionar esto bien (work, ....)  - lo único que es obligatorio es fileDesc
+					if (//song.getWork() != null && // it is inside a work 
+						"titleStmt".equals(getParentElement())) {
+						//song.getWork().setTitle(content);
+						song.addTitle(content);
+					}
+					break;
+				case "persName":
+					if (//song.getWork() != null && // it is inside a work 
+					"respStmt".equals(getParentElement()) && personRole != null) {
+						//song.getWork().addPerson(personRole, content);
+						song.addPerson(personRole, content);
+					}
+					break;
+				case "dynam":
+					addDynamics(lastStaff, content, dynamTime);
+					dynamTime = null;
+					break;
+				}
+		} catch (IM3Exception e) {
+			throw new ImportException(e);
+		}
+	}
+	
+	private void addDynamics(Staff staff, String amdynamics, Time time) throws IM3Exception, ImportException {
+		DynamicMark m;
+		switch (amdynamics) { 
+		case "fff":
+			m = new DynamicMarkFortePossible(staff, time);
+			break;					
+		case "ff":
+			m = new DynamicMarkFortissimo(staff, time);
+			break;					
+		case "f":
+			m = new DynamicMarkForte(staff, time);
+			break;					
+		case "mf":
+			m = new DynamicMarkMezzoForte(staff, time);
+			break;
+		case "mp":
+			m = new DynamicMarkMezzoPiano(staff, time);
+			break;
+		case "p": 
+			m = new DynamicMarkPiano(staff, time);
+			break;
+		case "pp": 
+			m = new DynamicMarkPianissimo(staff, time);
+			break;
+		case "ppp": 
+			m = new DynamicMarkPianoPossible(staff, time);
+			break;		
+			default:
+				throw new ImportException("Unsupported dynamics: "  +  amdynamics);
+		}
+		staff.addMark(m);
+	}	
+	
+	@Override
+	protected void handleElementClose(String closingElement) throws ImportException {
+		if (importingMusic) {
+			switch (closingElement) {
+			case "chord":
+				lastChord = null;
+				break;
+			case "beam":
+				currentBeam = null;
+				break;
+			case "music":
+				importingMusic = false;
+				break;
+			case "dynam":
+				dynamTime = null;
+				break;
+			case "ossia":
+				inOssia = false;
+				break;				
+			}
+		} 
+	}
+	
+	/**
+	 * Once a new measure is found, all time counters should be updated
+	 * @return
+	 * @throws ImportException 
+	 * @throws IM3Exception 
+	 */
+	private void updateTimesGivenMeasure() throws ImportException, IM3Exception {
+		if (lastMeter != null && currentMeasure != null) { 
+			setCurrentTime(currentMeasure.getEndTime());
+		}
+	}
+
+	
+	@Override
+	protected void postProcess() throws ImportException {
+		/*FRACCIONES List<AMMeasure> measures = song.getMeasuresAsList();
+		for (PendingConnector pendingConnector: pendingConnectors) {
+			AMTimedElement fromElement;
+			String fromStr, toStr;
+			if (pendingConnector.startid != null) {				
+				fromElement = findXMLID(pendingConnector.startid);
+				fromStr = pendingConnector.startid;
+			} else if (pendingConnector.tstamp != null) {
+				fromElement = getPlaceHolderFromTStamp(pendingConnector.measure, pendingConnector.tstamp, pendingConnector.staff, pendingConnector.layer);
+				fromStr = pendingConnector.tstamp;
+			} else {
+				throw new ImportException("Missing either startid or endif for connector " + pendingConnector.tag);
+			}
+			AMTimedElement toElement;
+			if (pendingConnector.endid != null) {				
+				toElement = findXMLID(pendingConnector.endid);
+				toStr = pendingConnector.endid;
+			} else if (pendingConnector.tstamp2 != null) {
+				toElement = getPlaceHolderFromTStamp2(pendingConnector.staff, pendingConnector.layer, pendingConnector.measure, measures, pendingConnector.tstamp2);
+				toStr = pendingConnector.tstamp2;
+			} else {
+				throw new ImportException("Missing either startid or endif for connector " + pendingConnector.tag);
+			}
+			
+			switch (pendingConnector.tag) {
+				case "slur":
+				case "phrase": // TODO - deberían ser semánticamente diferentes
+					AMSlur slur = new AMSlur();
+					slur.setFrom(fromElement);
+					slur.setTo(toElement);
+					try {
+						currentScorePart.addConnector(slur);
+					} catch (ImportException e) {
+						e.printStackTrace();
+						throw new ImportException("Duplicated slur from " + fromStr + " to " + toStr);
+					}
+					fromElement.addConnector(slur);
+					toElement.addConnector(slur);
+					break;
+				case "tie":
+					if (!(fromElement instanceof AMNoteOrRest)) { //TODO ¿acordes?
+						throw new ImportException("Expected a note and found " + fromElement.getClass());
+					}
+					if (!(toElement instanceof AMNoteOrRest)) { //TODO ¿acordes?
+						throw new ImportException("Expected a note and found " + fromElement.getClass());
+					}
+					AMNoteOrRest from = (AMNoteOrRest) fromElement;
+					AMNoteOrRest to = (AMNoteOrRest) toElement;
+					if (!from.hasConnectorTo(AMTie.class, to)) { // the tie attribute may have been already used
+						AMTie tie = new AMTie(from); 
+						tie.setTo(to);
+						from.addConnector(tie);
+						to.addConnector(tie);
+						currentScorePart.addConnector(tie);
+					} 
+					break;
+				case "hairpin":
+					String form = pendingConnector.content;
+					AMHairpin hairpin;
+					if (form.equals("cres")) {
+						hairpin = new AMHairpinCrescendo();
+					} else if (form.equals("dim")) {
+						hairpin = new AMHairpinDiminuendo();
+					} else {
+						throw new ImportException("Invalid hairpin type: '" + form + "'");
+					}
+					hairpin.setFrom(fromElement);
+					hairpin.setTo(toElement);
+					fromElement.addConnector(hairpin);
+					toElement.addConnector(hairpin);
+					break;					
+			}
+		}*/
+	}
+
+	/*FRACCIONES protected AMTimedElement getPlaceHolderFromTStamp2(AMStaff staff, String layer, AMMeasure fromMeasure, List<AMMeasure> measures, String tstamp2) throws ImportException {
+		String [] strings = tstamp2.split("m\\+");
+		
+		int nmeasure;
+		double tstamp;
+		if (strings.length == 1) {
+			nmeasure = 0;
+			tstamp = Double.parseDouble(strings[0])-1;
+		} else if (strings.length == 2) {
+			nmeasure = Integer.parseInt(strings[0]);
+			tstamp = Double.parseDouble(strings[1])-1;
+		} else {
+			throw new ImportException("Expected format <number>m+<number> and found: " + tstamp2);
+		}
+		
+		AMMeasure destMeasure = measures.get(fromMeasure.getOriginalPosition() + nmeasure); 
+		Time time = destMeasure.getTime().add(new Time(Fraction.getFraction(tstamp)));
+		return getOrCreatePlaceHolder(time, staff, layer);
+	}
+
+	protected AMTimedElement getPlaceHolderFromTStamp(AMMeasure measure, String tstamp, AMStaff staff, String layer) {
+		Time ts = decodeTStamp(measure, tstamp);
+		return getOrCreatePlaceHolder(ts, staff, layer); 
+	}
+
+
+	protected AMTimedElement getOrCreatePlaceHolder(Time ts, AMStaff staff, String layer) {
+		AMStaffPlaceHolder placeHolder =  placeHolders.get(ts);
+		if (placeHolder == null) {
+			placeHolder = new AMStaffPlaceHolder(currentScorePart.getElements().size(), ts);
+			placeHolder.setLayer(layer);
+			placeHolder.setStaff(staff);
+			currentScorePart.addElement(placeHolder);
+		}
+		return placeHolder;
+	}
+
+
+	public AMTimedElement findXMLID(String id) throws ImportException {
+		if (id.startsWith("#")) {
+			id = id.substring(1);
+		}
+		AMTimedElement result = xmlIDs.get(id);
+		if (result == null) {
+			throw new ImportException("No element with xml:id='" + id + "' found");
+		}
+		return result;
+	}*/
+	
+	
+}

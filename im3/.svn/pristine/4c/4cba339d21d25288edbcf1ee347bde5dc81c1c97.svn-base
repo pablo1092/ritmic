@@ -1,0 +1,375 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+/**
+ * It belongs to an atom. In a tuplet it represents each note in the tuplet. For a simple note
+ * the Atom has just a figure. For a single chord the Atom has a single figure. 
+ */
+public class AtomFigureOLD implements ITimedElement, ISymbolWithConnectors, Comparable<AtomFigureOLD> {
+	private Time onsetRelativeToAtom;
+	private Time duration;
+	private int dots;
+	private Figures figure;
+	private String ID;
+	/**
+	 * Used in mensural
+	 */
+	Boolean colored;
+	/**
+	 * Pitches that start on this figure 
+	 */
+	List<AtomPitch> onsetPitches;
+	/**
+	 * Pitches that continue from other previous figure 
+	 */
+	List<AtomContinuationPitch> continuationPitches;
+	
+	private Atom atom;
+	
+	ConnectorCollection connectorCollection;
+	
+	/**
+	 * Used for tuplets and proportions in mensural. In MEI = @num. In a triplet this value is 3
+	 */
+	Integer irregularGroupActualFigures;
+	/**
+	 * Used for tuplets and proportions in mensural. In MEI = @numbase. In a triplet this value is 2
+	 */
+	Integer irregularGroupInSpaceOfFigures;
+	
+	/**
+	 * Package visibility, use  Atom.addFigure
+	 * @param atom
+	 * @param figure
+	 * @param dots
+	 */
+	AtomFigureOLD(Atom atom, Figures figure, int dots) {
+		if (atom == null) {
+			throw new IM3RuntimeException("Atom cannot be null");
+		}
+		this.atom = atom;
+		this.figure = figure;
+		this.dots = dots;
+		duration = new Time(figure.getDurationWithDots(dots));
+		onsetRelativeToAtom = new Time(Fraction.ZERO);
+	}
+	
+	/**
+	 * Different duration from that computed from the figures. Used for tuplets or imperfectio
+	 * in mensural notation 
+	 * @param duration
+	 * @throws IM3Exception 
+	 */
+ 	public void setSpecialDuration(Time duration) throws IM3Exception {
+ 		atom.onFigureDurationChanged(this.duration, duration);
+ 		this.duration = duration;
+ 	}
+	
+ 	public void setIrregularGroup(int irregularGroupActualFigures, int irregularGroupInSpaceOfFigures) throws IM3Exception {
+ 		this.irregularGroupActualFigures = irregularGroupActualFigures;
+ 		this.irregularGroupInSpaceOfFigures = irregularGroupInSpaceOfFigures;
+ 		Fraction nd = duration.getExactTime().multiplyBy(Fraction.getFraction(irregularGroupInSpaceOfFigures, irregularGroupActualFigures));
+ 		setSpecialDuration(new Time(nd));
+ 	}
+ 	
+	public final Integer getIrregularGroupActualFigures() {
+		return irregularGroupActualFigures;
+	}
+
+	public final Integer getIrregularGroupInSpaceOfFigures() {
+		return irregularGroupInSpaceOfFigures;
+	}
+
+	public boolean isRest() {
+		return getNumPitches() == 0;
+	}
+
+	/**
+	 * Pitches including onsets and continuation
+	 * @return
+	 */
+	public int getNumPitches() {
+		int onsets = onsetPitches == null?0:onsetPitches.size();
+		int continuations = continuationPitches == null?0:continuationPitches.size();
+		return onsets + continuations;
+	}
+	public boolean isChord() {
+		return getNumPitches() > 1; 
+	}
+
+	/**
+	 * Package visibility, use  Atom.addFigure
+	 * Used tipically by tuplets
+	 * @param figure
+	 * @param dots2
+	 * @param alteredDuration
+	 */
+	AtomFigureOLD(Atom atom, Figures figure, int dots, Fraction alteredDuration) {
+		if (atom == null) {
+			throw new IM3RuntimeException("Atom cannot be null");
+		}
+		
+		this.atom = atom;
+		this.figure = figure;
+		this.dots = dots;
+		this.duration = new Time(alteredDuration);
+	}
+
+	public AtomPitch addOnsetPitch(ScientificPitch pitch) {
+		if (onsetPitches == null) {
+			onsetPitches = new ArrayList<>();
+		}
+		AtomPitch ap = new AtomPitch(this, pitch);
+		onsetPitches.add(ap);		
+		return ap;
+	}	
+	public AtomContinuationPitch addContinuationPitch(AtomPitch fromPitch) {
+		if (continuationPitches == null) {
+			continuationPitches = new ArrayList<>();
+		}
+		AtomContinuationPitch ap = new AtomContinuationPitch(this, fromPitch);
+		continuationPitches.add(ap);
+		return ap;
+	}	
+	public Time getDuration() {
+		return duration;
+	}
+	public List<AtomPitch> getOnsetPitches() {
+		return onsetPitches;
+	}
+
+	public final List<AtomContinuationPitch> getContinuationPitches() {
+		return continuationPitches;
+	}
+
+	public double getComputedDuration() {
+		return duration.getComputedTime();
+	}
+	
+	public Fraction getExactDuration() {
+		return duration.getExactTime();
+	}
+
+	public void setRelativeOnset(Fraction relativeOnset) {
+		this.onsetRelativeToAtom = new Time(relativeOnset);		
+	}
+	
+	//TODO Guardarla para que no haya que recalcularla siempre
+	@Override
+	/**
+	 * It returns the absolute time
+	 * @throws IM3Exception 
+	 */
+	public Time getTime() throws IM3Exception {
+		if (atom.getTime() == null) {
+			throw new IM3Exception("The atom onset is null");
+		}
+		if (onsetRelativeToAtom == null) {
+			throw new IM3Exception("The relative onset is null");
+		}
+		return atom.getTime().add(onsetRelativeToAtom);
+	}
+	
+	@Override
+	public boolean hasTime() {
+		return atom.hasTime() && onsetRelativeToAtom != null;
+	}
+	
+	public Time getRelativeOnset() {
+		return this.onsetRelativeToAtom;
+	}
+
+	public final int getDots() {
+		return dots;
+	}
+
+	public final Figures getFigure() {
+		return figure;
+	}
+
+	@Override
+	public int compareTo(AtomFigureOLD o) {
+		int diff;
+		if (hasTime() && o.hasTime()) {
+			try {
+				diff = getTime().compareTo(o.getTime());
+			} catch (IM3Exception e) {
+				// it has been checked in the if condition
+				throw new IM3RuntimeException("This should never happen:" + e);
+			}
+		} else {
+			diff = 0;
+		}
+		
+		if (diff == 0) {
+			diff = duration.compareTo(o.duration);
+			if (diff == 0) {
+				diff = atom.compareTo(o.atom);
+			}
+		}
+		return diff;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((atom == null) ? 0 : atom.hashCode());
+		result = prime * result + ((duration == null) ? 0 : duration.hashCode());
+		result = prime * result + ((onsetRelativeToAtom == null) ? 0 : onsetRelativeToAtom.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AtomFigureOLD other = (AtomFigureOLD) obj;
+		if (atom == null) {
+			if (other.atom != null)
+				return false;
+		} else if (!atom.equals(other.atom))
+			return false;
+		if (duration == null) {
+			if (other.duration != null)
+				return false;
+		} else if (!duration.equals(other.duration))
+			return false;
+		if (onsetRelativeToAtom == null) {
+			if (other.onsetRelativeToAtom != null)
+				return false;
+		} else if (!onsetRelativeToAtom.equals(other.onsetRelativeToAtom))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String __getID() {
+		return ID;
+	}
+
+	@Override
+	public void __setID(String id) {
+		this.ID = id;
+		
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "A";
+	}
+
+	/**
+	 * This convenience method is used when we know it is not a rest or chord
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public AtomPitch getUniquePitch() throws IM3Exception {
+		int nps = getNumPitches();
+		if (nps != 1) {
+			throw new IM3Exception("Cannot get a unique pitch when there are " + nps + " pitches");
+		}
+		if (onsetPitches != null && !onsetPitches.isEmpty()) {
+			return onsetPitches.get(0);
+		}
+		if (continuationPitches != null && !continuationPitches.isEmpty()) {
+			return continuationPitches.get(0).getFromPitch();
+		}
+		throw new IM3RuntimeException("This error should ever happen");		
+	}
+
+
+	@Override
+	public Collection<Connector<?, ?>> getConnectors() {
+		if (connectorCollection == null) {
+			return null;
+		} else {
+			return connectorCollection.getConnectors();
+		}		
+	}
+
+	@Override
+	public void addConnector(Connector<?, ?> connector) {
+		if (connectorCollection == null) {
+			connectorCollection = new ConnectorCollection();
+		}
+		connectorCollection.add(connector);
+	}
+
+	@Override
+	public boolean containsConnectorFrom(Class<? extends Connector<?, ?>> connectorClass,
+			ISymbolWithConnectors fromSymbol) {
+		if (connectorCollection == null) {
+			return false;
+		} else {
+			return connectorCollection.containsConnectorFrom(connectorClass, fromSymbol);
+		}
+		
+	}
+
+	@Override
+	public boolean containsConnectorTo(Class<? extends Connector<?, ?>> connectorClass,
+			ISymbolWithConnectors fromSymbol) {
+		if (connectorCollection == null) {
+			return false;
+		} else {
+			return connectorCollection.containsConnectorTo(connectorClass, fromSymbol);
+		}		
+	}
+
+	public final Atom getAtom() {
+		return atom;
+	}
+
+	public ScoreLayer getLayer() {
+		return atom.getLayer();
+	}
+
+	public boolean containsPitch(ScientificPitch sp) {
+		for (AtomPitch atomPitch : onsetPitches) {
+			if (atomPitch.getScientificPitch().equals(sp)) {
+				return true;
+			}
+		}
+		for (AtomContinuationPitch atomContinuationPitch : continuationPitches) {
+			if (atomContinuationPitch.getScientificPitch().equals(sp)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public final boolean hasColoration() {
+		return colored != null;
+	}
+	public final boolean isColored() {
+		return colored != null && colored.booleanValue();
+	}
+
+	public final void setColored(boolean colored) {
+		this.colored = colored;
+	}
+
+	@Override
+	public String toString() {
+		return "AtomFigure [onsetPitches=" + onsetPitches + ", continuationPitches=" + continuationPitches + ", figure="
+				+ figure + ", dots=" + dots + ", duration=" + duration + ", onsetRelativeToAtom=" + onsetRelativeToAtom
+				+ ", irregularGroupActualFigures=" + irregularGroupActualFigures + ", irregularGroupInSpaceOfFigures="
+				+ irregularGroupInSpaceOfFigures + ", ID=" + ID + "]";
+	}
+
+	
+
+}

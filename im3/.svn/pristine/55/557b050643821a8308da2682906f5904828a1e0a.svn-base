@@ -1,0 +1,31 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.HashMap;
+
+/**
+ * It gives the relative position in a staff for elements with the same time
+ * @author drizo
+ *
+ */
+public class StaffPositionComparator {
+	static HashMap<Class<?>, Integer> position = new HashMap<>();
+	{
+		position.put(Barline.class, 0);
+		position.put(Clef.class, 1);
+		position.put(KeySignature.class, 2);
+		position.put(TimeSignature.class, 3);		
+	}
+	
+	private static int getPosition(Object o) {
+		Integer pos = position.get(o);
+		if (pos == null) {
+			return position.size();
+		} else {
+			return pos;
+		}
+	}
+	public static int compare(Object o1, Object o2) {
+		return getPosition(o1) - getPosition(o2);
+	}
+
+}

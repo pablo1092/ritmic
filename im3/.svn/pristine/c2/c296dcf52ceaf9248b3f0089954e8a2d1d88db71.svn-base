@@ -1,0 +1,32 @@
+package es.ua.dlsi.im3.core.score;
+
+import es.ua.dlsi.im3.IM3Exception;
+
+/**
+ * @author drizo
+ * @date 03/06/2011
+ *
+ */
+public abstract class Meter extends TimedElementWithNotationInStaves<TimeSignature> {
+	/**
+	 * @param numerator
+	 * @param denominator
+	 */
+	public Meter() {
+	}
+
+	@Override
+	public abstract Meter clone();
+
+	@Override
+	public String __getIDPrefix() {
+		return "M";
+	}
+
+	@Override
+	public TimeSignature createNotation(NotationType notationType, Staff staff) throws IM3Exception {
+		return new TimeSignature(notationType, this, staff);
+	}
+
+	
+}

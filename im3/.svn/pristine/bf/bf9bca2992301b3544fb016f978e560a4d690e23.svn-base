@@ -1,0 +1,77 @@
+package es.ua.dlsi.im3.core.score.io.mei;
+
+import java.io.File;
+import java.io.InputStream;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.core.score.ISymbolInLayer;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.io.IScoreSongImporter;
+import es.ua.dlsi.im3.core.score.io.IXMLSAXImporterExtension;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMMeasure;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMSong;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AMTimedElement;
+import es.ua.dlsi.im3.core.score.io.abstractmodel.AbstractModel2ScoreSong;
+import es.ua.dlsi.im3.io.ImportException;
+
+/**
+ * @author drizo
+ *
+ */
+public class MEISongImporter implements IScoreSongImporter {
+	private MEISAXImporterAbstractModel importer;
+	private AbstractModel2ScoreSong abstractModel2ModernSong;
+
+	public MEISongImporter() {
+		importer = new MEISAXImporterAbstractModel();
+		abstractModel2ModernSong = new AbstractModel2ScoreSong();
+	}
+	@Override
+	public ScoreSong importSong(File file) throws ImportException {
+		AMSong amSong = importer.importFileToAbstractSong(file);
+		ScoreSong modernSong;
+		try {
+			modernSong = abstractModel2ModernSong.importAbstractSong(amSong);
+		} catch (IM3Exception e) {
+			throw new ImportException(e);
+		}
+		return modernSong;
+	}
+
+	@Override
+	public ScoreSong importSong(InputStream is) throws ImportException {
+		AMSong amSong = importer.importStream(is);
+		AbstractModel2ScoreSong a2m = new AbstractModel2ScoreSong();
+		ScoreSong modernSong;
+		try {
+			modernSong = a2m.importAbstractSong(amSong);
+		} catch (IM3Exception e) {
+			throw new ImportException(e);
+		}
+		return modernSong;
+	}
+
+	public void registerExtension(IXMLSAXImporterExtension extension) {
+		importer.registerExtension(extension);
+	}
+	/*public AMTimedElement findXMLID(String xmlid) throws ImportException {
+		return importer.findXMLID(xmlid);
+	}
+	public double decodeTStamp(AMMeasure measure, String tstamp) {
+		return importer.decodeTStamp(measure, tstamp);
+	}*/
+	public ISymbolInLayer findXMLID(String xmlid) throws ImportException {
+		AMTimedElement timedElement = importer.findXMLID(xmlid);
+		return abstractModel2ModernSong.findCoreSymbol(timedElement);		
+	}
+	public Time decodeTStamp(String measureid, String tstamp) throws ImportException {
+		AMTimedElement measure = importer.findXMLID(measureid);		
+		Time quarters = importer.decodeTStamp((AMMeasure)measure, tstamp);
+		return quarters;
+	}
+	
+	
+	//TODO Añadir la lectura de group, mdiv....
+
+}

@@ -1,0 +1,19 @@
+package es.ua.dlsi.im3.core.score;
+
+public class AtomContinuationPitchOLD extends AtomPitch {
+	AtomPitch fromPitch;
+	
+	public AtomContinuationPitchOLD(AtomFigure figure, AtomPitch fromPitch) {
+		super(figure, fromPitch.getScientificPitch());
+		this.fromPitch = fromPitch;
+		this.fromPitch.setTiedTo(this);
+	}
+
+	public final AtomPitch getFromPitch() {
+		return fromPitch;
+	}
+
+	public final void setFromPitch(AtomPitch fromPitch) {
+		this.fromPitch = fromPitch;
+	}
+}

@@ -1,0 +1,134 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.io.ImportException;
+
+/**
+ * The time must be set in the abstract model because some encodings, such as MusicXML,
+ * use it to encode voices (see backup or forward elements in that encoding)
+ * @author drizo
+ */
+public class AMTimedElement {
+	/**
+	 * Time specified as relation to quarters
+	 */
+	Time time;
+	/**
+	 * Original position after reading input (file...)
+	 */
+	int originalPosition;
+	protected String ID;
+	
+	ArrayList<IAMConnector> connectors;
+
+	public AMTimedElement(int originalPosition, Time time) {
+		this.time = time;
+		this.originalPosition = originalPosition;
+	}
+
+	public Time getTime() {
+		return time;
+	}
+	
+	public int getOriginalPosition() {
+		return originalPosition;
+	}
+
+	@Override
+	public String toString() {
+		return "[time=" + time + "]";
+	}
+
+	
+	public String getID() {
+		return ID;
+	}
+
+	public void setID(String iD) {
+		ID = iD;
+	}
+
+	public final void setTime(Time time) {
+		this.time = time;
+	}
+
+	public void addConnector(IAMConnector connector) throws ImportException {
+		if (connectors == null) {
+			connectors = new ArrayList<>();
+		}
+		for (IAMConnector c : connectors) {
+			if (c.getFrom() == this) {
+				if (c.getTo() == connector.getTo() && c.getClass() == connector.getClass()) {
+					throw new ImportException("Repeated outgoing connector: "  + connector + " with hashCode " + connector.hashCode() + " from " + this);
+				}
+			} else if (c.getTo() == this) {
+				if (c.getFrom() == connector.getFrom() && c.getClass() == connector.getClass()) {
+					throw new ImportException("Repeated ingoing connector: "  + connector + " to " + this);
+				}				
+			} else {
+				throw new ImportException("Connector not connected to this note");
+			}
+		}
+		connectors.add(connector);
+	}
+	
+
+	public boolean hasConnectorTo(Class<?> clazz, AMTimedElement to) {
+		if (connectors != null) {
+			for (IAMConnector c : connectors) {
+				if (c.getClass() == clazz && c.getTo() == to) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	public ArrayList<IAMConnector> getConnectors() {
+		return connectors;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((ID == null) ? 0 : ID.hashCode());
+		result = prime * result + ((connectors == null) ? 0 : connectors.hashCode());
+		result = prime * result + originalPosition;
+		result = prime * result + ((time == null) ? 0 : time.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMTimedElement other = (AMTimedElement) obj;
+		if (ID == null) {
+			if (other.ID != null)
+				return false;
+		} else if (!ID.equals(other.ID))
+			return false;
+		if (connectors == null) {
+			if (other.connectors != null)
+				return false;
+		} else if (!connectors.equals(other.connectors))
+			return false;
+		if (originalPosition != other.originalPosition)
+			return false;
+		if (time == null) {
+			if (other.time != null)
+				return false;
+		} else if (!time.equals(other.time))
+			return false;
+		return true;
+	}
+
+	
+}

@@ -1,0 +1,60 @@
+package es.ua.dlsi.im3.core.score.mensural;
+
+import java.util.ArrayList;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.AtomPitch;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.ScientificPitch;
+import es.ua.dlsi.im3.core.score.Time;
+
+public abstract class SingleLigature extends Atom {
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	ArrayList<AtomPitch> atomPitches;
+	
+	public SingleLigature(Figures inSpaceOf, int inSpaceOfDots, Figures [] figures, ScientificPitch ... pitches) {
+		AtomFigure wholeFigure;
+		try {
+			wholeFigure = this.addAtomFigure(inSpaceOf, inSpaceOfDots);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException(e); // it should never happen, everything is controlled
+		}
+		if (figures.length != pitches.length) {
+			throw new IM3RuntimeException("Invalid ligature, the number of pitches ("+ pitches.length + 
+					") should be the same as the number of figures (" + figures.length + ")");
+		}
+		atomPitches = new ArrayList<>();
+		Fraction currentRelativeOnset = Fraction.ZERO;
+		for (int i=0; i<figures.length; i++) {			
+			AtomPitch atomPitch = wholeFigure.addOnsetPitch(pitches[i]);			
+			atomPitch.setRelativeOnset(currentRelativeOnset);
+			currentRelativeOnset = currentRelativeOnset.add(figures[i].getDuration());			
+			atomPitches.add(atomPitch);
+		}
+	}
+	public ScientificPitch[] getPitches() {
+		ScientificPitch [] result = new ScientificPitch[atomPitches.size()];
+		int i=0;
+		for (AtomPitch atomPitch: atomPitches) {
+			result[i++] = atomPitch.getScientificPitch();
+		}
+		return result;
+	}
+	
+	public Time[] getPitchesOnsets() throws IM3Exception {
+		Time [] result = new Time[atomPitches.size()];
+		int i=0;
+		for (AtomPitch atomPitch: atomPitches) {
+			result[i++] = this.getTime().add(atomPitch.getRelativeOnset());
+		}
+		return result;
+		
+	}	
+}

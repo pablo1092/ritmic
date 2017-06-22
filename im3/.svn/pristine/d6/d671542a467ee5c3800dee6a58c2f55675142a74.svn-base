@@ -1,0 +1,174 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import es.ua.dlsi.im3.core.score.Time;
+
+public class AMTimeSignature extends AMTimedElement implements IAMElementWithStaff {
+	private String beats;
+	private String beatType;	
+	private String symbol;
+	/**
+	 * Mensural modusMaior
+	 */
+	private String modusMaior;
+	/**
+	 * Mensural modusMinor
+	 */
+	private String modusMinor;
+	/**
+	 * Mensural tempus
+	 */
+	private String tempus;
+	/**
+	 * Mensural prolatio
+	 */	
+	private String prolatio;	
+	private AMStaff staff;
+
+	public AMTimeSignature(int originalPosition, Time time) {
+		super(originalPosition, time);
+	}
+	
+	public String getSymbol() {
+		return symbol;
+	}
+
+	public void setSymbol(String symbol) {
+		this.symbol = symbol;
+	}
+
+	public String getBeats() {
+		return beats;
+	}
+	public void setBeats(String beats) {
+		this.beats = beats;
+	}
+	public String getBeatType() {
+		return beatType;
+	}
+	public void setBeatType(String beatType) {
+		this.beatType = beatType;
+	}
+
+	public AMStaff getStaff() {
+		return staff;
+	}
+
+	public void setStaff(AMStaff staff) {
+		this.staff = staff;
+	}
+
+	public final String getModusMaior() {
+		return modusMaior;
+	}
+
+	public final void setModusMaior(String modusMaior) {
+		this.modusMaior = modusMaior;
+	}
+
+	public final String getTempus() {
+		return tempus;
+	}
+
+	public final void setTempus(String tempus) {
+		this.tempus = tempus;
+	}
+
+	public final String getProlatio() {
+		return prolatio;
+	}
+
+	public final void setProlatio(String prolatio) {
+		this.prolatio = prolatio;
+	}
+
+	public final String getModusMinor() {
+		return modusMinor;
+	}
+
+	public final void setModusMinor(String modusMinor) {
+		this.modusMinor = modusMinor;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + ((beatType == null) ? 0 : beatType.hashCode());
+		result = prime * result + ((beats == null) ? 0 : beats.hashCode());
+		result = prime * result + ((modusMaior == null) ? 0 : modusMaior.hashCode());
+		result = prime * result + ((modusMinor == null) ? 0 : modusMinor.hashCode());
+		result = prime * result + ((prolatio == null) ? 0 : prolatio.hashCode());
+		result = prime * result + ((staff == null) ? 0 : staff.hashCode());
+		result = prime * result + ((symbol == null) ? 0 : symbol.hashCode());
+		result = prime * result + ((tempus == null) ? 0 : tempus.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMTimeSignature other = (AMTimeSignature) obj;
+		if (beatType == null) {
+			if (other.beatType != null)
+				return false;
+		} else if (!beatType.equals(other.beatType))
+			return false;
+		if (beats == null) {
+			if (other.beats != null)
+				return false;
+		} else if (!beats.equals(other.beats))
+			return false;
+		if (modusMaior == null) {
+			if (other.modusMaior != null)
+				return false;
+		} else if (!modusMaior.equals(other.modusMaior))
+			return false;
+		if (modusMinor == null) {
+			if (other.modusMinor != null)
+				return false;
+		} else if (!modusMinor.equals(other.modusMinor))
+			return false;
+		if (prolatio == null) {
+			if (other.prolatio != null)
+				return false;
+		} else if (!prolatio.equals(other.prolatio))
+			return false;
+		if (staff == null) {
+			if (other.staff != null)
+				return false;
+		} else if (!staff.equals(other.staff))
+			return false;
+		if (symbol == null) {
+			if (other.symbol != null)
+				return false;
+		} else if (!symbol.equals(other.symbol))
+			return false;
+		if (tempus == null) {
+			if (other.tempus != null)
+				return false;
+		} else if (!tempus.equals(other.tempus))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "AMTimeSignature [beats=" + beats + ", beatType=" + beatType + ", symbol=" + symbol + ", modusMaior="
+				+ modusMaior + ", modusMinor=" + modusMinor + ", tempus=" + tempus + ", prolatio=" + prolatio
+				+ ", staff=" + staff + "]";
+	}
+
+	public boolean isMensural() {
+		return modusMaior != null || modusMinor != null || tempus != null || prolatio != null;
+	}
+
+
+
+	
+	
+}

@@ -1,0 +1,28 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.Comparator;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+public interface ISymbolInLayer extends ITimedElement {
+	StaffLayer getLayer();
+	//void setLayer(StaffLayer staffLayer);
+	void setLayer(StaffLayer staffLayer);
+	static final Comparator<ISymbolInLayer> SYMBOL_TIME_COMPARATOR = new Comparator<ISymbolInLayer>() {
+		@Override
+		public int compare(ISymbolInLayer o1, ISymbolInLayer o2) {
+			int diff;
+			try {
+				diff = o1.getTime().compareTo(o2.getTime());
+			} catch (IM3Exception e) {
+				throw new IM3RuntimeException("Cannot compare elements without time: "  + e);
+			}
+			if (diff == 0) {
+				diff = o1.hashCode() - o2.hashCode();
+			}
+			return diff;
+		}
+		
+	};
+}

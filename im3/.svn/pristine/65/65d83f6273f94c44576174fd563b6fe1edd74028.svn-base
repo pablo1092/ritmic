@@ -1,0 +1,72 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+/**
+ * This class should be used just as a preset. The main class to be used is Atom
+ * @author drizo
+ *
+ */
+public class SingleChordOLD extends Atom {
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	AtomFigure atomFigure;
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	ArrayList<AtomPitch> atomPitches;
+		
+	/**
+	 * Used to prepare chord structures that will later accept scientific pitches
+	 * @param figure
+	 * @param dots
+	 */
+	public SingleChordOLD(Figures figure, int dots) {
+		try {
+			atomFigure = addAtomFigure(figure, dots);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException(e); // it should never happen, everything is controlled
+		}
+		atomPitches = new ArrayList<>();
+	}
+	
+	public SingleChordOLD(Figures figure, int dots, ScientificPitch ... pitches) {
+		try {
+			atomFigure = addAtomFigure(figure, dots);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException(e); // it should never happen, everything is controlled
+		}
+		atomPitches = new ArrayList<>();
+		for (ScientificPitch scientificPitch : pitches) {
+			atomPitches.add(atomFigure.addOnsetPitch(scientificPitch));			
+		}
+	}
+	
+	public void addPitches(ScientificPitch ... pitches) {
+		for (ScientificPitch scientificPitch : pitches) {
+			atomPitches.add(atomFigure.addOnsetPitch(scientificPitch));			
+		}
+	}
+	
+	public AtomPitch addPitch(ScientificPitch pitch) {
+		AtomPitch result = atomFigure.addOnsetPitch(pitch); 
+		atomPitches.add(result);
+		return result;
+	}
+
+	
+	
+	public ScientificPitch[] getPitches() {
+		ScientificPitch [] result = new ScientificPitch[atomPitches.size()];
+		int i=0;
+		for (AtomPitch atomPitch: atomFigure.getOnsetPitches()) {
+			result[i++] = atomPitch.getScientificPitch();
+		}
+		return result;
+	}
+
+}

@@ -1,0 +1,703 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.core.score.Accidentals;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.Clef;
+import es.ua.dlsi.im3.core.score.DynamicMark;
+import es.ua.dlsi.im3.core.score.HierarchicalIDGenerator;
+import es.ua.dlsi.im3.core.score.ISymbolInLayer;
+import es.ua.dlsi.im3.core.score.ITimedSymbolWithConnectors;
+import es.ua.dlsi.im3.core.score.Key;
+import es.ua.dlsi.im3.core.score.Meter;
+import es.ua.dlsi.im3.core.score.Mode;
+import es.ua.dlsi.im3.core.score.PitchClass;
+import es.ua.dlsi.im3.core.score.PositionAboveBelow;
+import es.ua.dlsi.im3.core.score.ScientificPitch;
+import es.ua.dlsi.im3.core.score.ScorePart;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.ScoreVoice;
+import es.ua.dlsi.im3.core.score.SingleChord;
+import es.ua.dlsi.im3.core.score.SingleNote;
+import es.ua.dlsi.im3.core.score.SingleRest;
+import es.ua.dlsi.im3.core.score.Slur;
+import es.ua.dlsi.im3.core.score.Staff;
+import es.ua.dlsi.im3.core.score.StaffLayer;
+import es.ua.dlsi.im3.core.score.StaffTimedPlaceHolder;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.Wedge;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicCrescendo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicDiminuendo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkForte;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkFortePossible;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkFortissimo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkMezzoForte;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkMezzoPiano;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPianissimo;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPiano;
+import es.ua.dlsi.im3.core.score.dynamics.DynamicMarkPianoPossible;
+import es.ua.dlsi.im3.core.score.io.NotationImporter;
+import es.ua.dlsi.im3.core.score.meters.MeterCommonTime;
+import es.ua.dlsi.im3.core.score.meters.MeterCutTime;
+import es.ua.dlsi.im3.core.score.staves.Pentagram;
+import es.ua.dlsi.im3.core.score.staves.PercussionStaff;
+import es.ua.dlsi.im3.io.ImportException;
+import es.ua.dlsi.im3.metadata.FileDescription;
+import es.ua.dlsi.im3.metadata.Header;
+import es.ua.dlsi.im3.metadata.Metadata;
+import es.ua.dlsi.im3.metadata.Person;
+import es.ua.dlsi.im3.metadata.Title;
+
+public class AbstractModel2ScoreSong extends NotationImporter {
+	
+	ScoreSong notationScore;
+	private AMSong amSong;
+	HashMap<String, Staff> staves;
+	//HashMap<AMNoteOrRest, ScoreNote> pendingTiesFrom;
+	HashMap<AMTimedElement, ISymbolInLayer> coreSymbols;
+	HashMap<AMStaffPlaceHolder, StaffTimedPlaceHolder> placeHolders;
+	ArrayList<AMSlur> pendingSlursTo;
+	ArrayList<AMHairpin> pendingHairpinsTo;
+	HierarchicalIDGenerator hierarchicalIdGenerator;
+	/**
+	 * The importer may give weird names to the voices or layers
+	 */
+	private HashMap<String, Integer> voiceNumbers;
+	private Time anacrusisOffset;
+
+	public ISymbolInLayer findCoreSymbol(AMTimedElement te) throws ImportException {
+		ISymbolInLayer result = coreSymbols.get(te);
+		if (result == null) {
+			throw new ImportException("Cannot find element " + te);
+		}
+		return result;
+	}
+	
+	public ScoreSong importAbstractSong(AMSong amSong) throws ImportException, IM3Exception {
+		this.notationScore = new ScoreSong();
+		staves = new HashMap<>();
+		voiceNumbers = new HashMap<>();
+		this.amSong = amSong;
+		this.amSong.completeMissingElements();
+		this.hierarchicalIdGenerator = new HierarchicalIDGenerator();
+		//pendingTiesFrom = new HashMap<>();
+		coreSymbols = new HashMap<>();
+		placeHolders = new HashMap<>();
+		importMetadata();
+		handlePossibleAnacrusis();
+		importParts();
+		notationScore.createBars(); //TODO podríamos comprobar que coinciden con las AMMeasure
+		
+		return (ScoreSong) notationScore;
+	}
+
+	private void handlePossibleAnacrusis() throws ImportException, IM3Exception {
+		// first locate 
+		AMTimeSignature firstTimeSignature = null;
+		Time secondMeasureTime = amSong.getSecondMeasureTime();
+		
+		for (AMPart part: amSong.getParts().values()) {
+			//20170217 if (part.getComputedSecondMeasureTime() != null) {
+			//20170217 if (secondMeasureTime != null && !secondMeasureTime.equals(part.getComputedSecondMeasureTime())) {
+			//20170217 throw new ImportException("Two parts start at different time");
+			//20170217 }
+			//20170217 secondMeasureTime = part.getComputedSecondMeasureTime();
+			//20170217 }
+			if (part.getComputedFirstTimeSignature() != null) {
+				if (firstTimeSignature != null && !firstTimeSignature.equals(part.getComputedFirstTimeSignature())) {
+					throw new ImportException("Two parts have different time signatures: "+ firstTimeSignature + " vs. " + part.getComputedFirstTimeSignature());
+				}
+				firstTimeSignature = part.getComputedFirstTimeSignature();
+			}
+		}		
+		
+		if (secondMeasureTime != null && firstTimeSignature != null) {
+			// cannot compute anacrusis (e.g. because the work had only a measure)
+			Meter meter = createMeter(firstTimeSignature);
+			Time expectedSecondMeasureTime = meter.getMeasureDuration();
+			Time offset = expectedSecondMeasureTime.substract(secondMeasureTime);
+			if (!offset.isZero()) {
+				Logger.getLogger(AbstractModel2ScoreSong.class.getName()).log(Level.FINE, "Anacrusis found with offset {0}", offset);
+				anacrusisOffset = offset;
+				notationScore.setAnacrusisOffset(anacrusisOffset);
+			} else {
+				anacrusisOffset = null;
+			}
+		}
+	}
+
+	private void importParts() throws ImportException, IM3Exception {
+		//TODO Part groups
+		if (amSong.getPartGroups() != null && !amSong.getPartGroups().isEmpty()) {
+			Logger.getLogger(AbstractModel2ScoreSong.class.getName()).log(Level.WARNING, "Part groups not implemented yet");
+		}
+		int number = 1;
+		for (Map.Entry<String, AMPart> entry: amSong.getParts().entrySet()) {
+			pendingSlursTo = new ArrayList<>();
+			pendingHairpinsTo = new ArrayList<>();
+			AMPart amPart = entry.getValue();
+			ScorePart scorePart = this.notationScore.addPart();
+			scorePart.setName(amPart.getName());
+			scorePart.setNumber(number);
+			scorePart.__setID(amPart.getID());
+			importPart(amPart, scorePart);
+			handleSlurs();
+			handleHairpins();
+
+			number++;
+		}
+	}
+
+	/**
+	 * We know all element have a staff because we have completed them in amsong.completeMissingElements
+	 * @param amstaff
+	 * @return
+	 * @throws ImportException 
+	 */
+	Staff getStaff(AMStaff amstaff) throws ImportException {
+		if (amstaff == null) {
+			throw new ImportException("The staff parameter should be not null");
+		}
+		Staff s = staves.get(amstaff.getNumber());
+		if (s == null) {
+			throw new ImportException("The staff with number '" + amstaff.getNumber() + " has not been created");
+		}
+		return s;
+	}
+	
+	private void importPart(AMPart amPart, ScorePart scorePart) throws ImportException, IM3Exception {
+		if (amPart != null && amPart.getStaves() != null) {
+			for (Entry<String, AMStaff> staff: amPart.getStaves().entrySet()) {
+				createStaff(scorePart, staff.getKey(), staff.getValue()); 
+			}
+		}
+		Time time = anacrusisOffset==null?Time.TIME_ZERO:anacrusisOffset; // 0 if not anacrusis
+		
+		// MEI inserts time signatures and keys at score level - MusicXML at part level		
+		if (amSong.getTimeSignatures() != null) {
+			for (AMTimeSignature ts: amSong.getTimeSignatures()) {
+				Meter meter = createMeter(ts);
+				notationScore.addMeter(time.add(ts.getTime()), meter);
+			}
+		}
+		if (amSong.getKeys() != null) {
+			for (AMKey ks: amSong.getKeys()) {
+				Key key = new Key(ks.getFifths(), decodeMode(ks.getMode()));
+				notationScore.addKey(time.add(ks.getTime()), key);
+			}
+		}		
+		for (AMTimedElement element: amPart.getElements()) {
+			time = element.getTime();
+			/// clef
+			if (element instanceof AMClef) {
+				AMClef amclef = (AMClef) element;
+				Staff staff = getStaff(amclef.getStaff());	
+				Clef clef = createClef(staff.getNotationType(), staff.getBackgroundLayer(), amclef.getSign(), amclef.getLine(), amclef.getOctaveChange());
+				clef.setTime(time);
+				staff.addClef(clef);
+			} else if (element instanceof AMKey) {
+				// MEI inserts time signatures and keys at score level - MusicXML at part level
+				AMKey amkey = (AMKey) element;
+				Mode mode = decodeMode(amkey.getMode());
+				Key previousKey = notationScore.getKeyWithOnsetOrNull(time);
+				if (previousKey != null) {
+					if (previousKey.getFifths() != amkey.getFifths() || previousKey.getMode() != mode) {
+						throw new ImportException("Inserting two different keys at the same time: fifths=" + amkey.getFifths() + ", mode= "+ mode + " vs fifths=" + previousKey.getFifths() + ", mode=" + previousKey.getMode() + " at time " + time);
+					}
+				} else {
+					Key key = new Key(amkey.getFifths(), mode);
+					notationScore.addKey(time, key);
+				}
+				//TODO ITranspositores
+			} else if (element instanceof AMTimeSignature) {
+				// MEI inserts time signatures and keys at score level - MusicXML at part level
+				AMTimeSignature amtime = (AMTimeSignature) element;
+				Meter meter = createMeter(amtime);
+				Meter previousMeter = notationScore.getMeterWithOnsetOrNull(time);
+				if (previousMeter != null) {
+					if (!previousMeter.equals(meter)) {
+						throw new ImportException("Inserting two different meters at the same time (previous=" + previousMeter + ", current=" + meter+") at time " + time);
+					}
+				} else {
+					notationScore.addMeter(time, meter);
+				}
+			//20170217 } else if (element instanceof AMMeasure) {
+				// TODO comprobar duraciones...
+			} else if (element instanceof AMDurationalSymbol) {
+				if (!notationScore.hasMeter()) {
+					// insert a default meter
+					notationScore.addMeter(Time.TIME_ZERO, new Meter(4,4));
+				} 
+				
+				if (!notationScore.hasKey()) {
+					// insert a default key
+					notationScore.addKey(Time.TIME_ZERO, new Key(0, Mode.MAJOR));
+					
+				}
+				if (element instanceof AMNoteOrRest) {					
+					importNoteOrRest(scorePart, (AMNoteOrRest)element);
+				} else if (element instanceof AMChord) {
+					importChord(scorePart, (AMChord)element); 
+				}
+			} else if (element instanceof AMStaffPlaceHolder) {
+				importStaffPlaceHolder(scorePart, (AMStaffPlaceHolder)element);
+			} else {
+				throw new ImportException("Unsupported element type: " + element.getClass().getName());
+			}
+		}
+		//TODO Anacrusa
+		//TODO Beams
+	}
+
+	private Mode decodeMode(String mode) throws ImportException {
+		if (mode == null || mode.equals("major")) {
+			return Mode.MAJOR;
+		} else if (mode.equals("minor")) {
+			return Mode.MINOR;
+		} else {
+			throw new ImportException("Invalid mode: '" + mode + "'");
+		}
+	}
+
+	private Meter createMeter(AMTimeSignature amtime) throws ImportException {
+		Meter meter = null;
+		if (amtime.getSymbol() != null) {
+			switch (amtime.getSymbol()) {
+			case "common":
+				meter = new MeterCommonTime();
+				break;
+			case "cut":
+				meter = new MeterCutTime();
+				break;
+			default:
+				throw new ImportException("Unknown symbol type for meter: '" + amtime.getSymbol() + "'");
+			}
+		} else {
+			if (amtime.getBeats() == null || amtime.getBeatType() == null) {
+				throw new ImportException("Missing beats or beat type in meter " + amtime);
+			}
+			meter = new Meter(Integer.parseInt(amtime.getBeats()), Integer.parseInt(amtime.getBeatType())); //TOD= ¿división por símbolo figura negra?
+			//System.out.println("Importing meter " + meter);
+		}
+		return meter;
+	}
+
+	private ScoreVoice getVoice(ScorePart part, String voiceLabel) throws IM3Exception {
+		if (voiceLabel == null) {
+			if (part.getVoices().size() == 1) {
+				return part.getUniqueVoice();
+			} else {
+				throw new IM3Exception("Voice label is null and the part has more than 1 voice");
+			}
+		} else {
+			Integer number = voiceNumbers.get(voiceLabel);
+			//System.out.println("VoiceLabel " + voiceLabel + ", voice= " + number);
+			
+			ScoreVoice scoreVoice;
+			if (number != null && part.existsVoice(number)) {
+				scoreVoice = part.getVoice(number);
+			} else {
+				number = part.getVoices().size()+1;
+				scoreVoice = new ScoreVoice(part, number); //TODO Starting time
+				part.addVoice(scoreVoice);
+				voiceNumbers.put(voiceLabel, number);
+			}
+			return scoreVoice;
+		}
+	}
+	
+	
+	private StaffLayer getOrCreateLayer(ScorePart scorePart, ScoreVoice scoreVoice, Staff staff, String amLayer) throws IM3Exception, ImportException {
+		StaffLayer layer = staff.getLayer(scoreVoice.getNumber());
+		if (layer == null) {
+			layer = new StaffLayer(staff, scoreVoice.getNumber());
+			staff.addLayer(layer);
+		}
+		return layer;		
+	}
+	
+	private void importChord(ScorePart scorePart, AMChord amchord) throws ImportException, IM3Exception {
+		Staff staff = getStaff(amchord.getStaff());
+		ScoreVoice scoreVoice = getVoice(scorePart, amchord.getLayer());
+		StaffLayer layer = getOrCreateLayer(scorePart, scoreVoice, staff, amchord.getLayer());
+		if (amchord.getNotes().isEmpty()) {
+			throw new ImportException("Chord without notes");
+		}
+		
+		ScientificPitch [] pitches = new ScientificPitch[amchord.getNotes().size()];
+		for (int i=0; i<amchord.getNotes().size(); i++) {
+			pitches[i] = getScientificPitch(amchord.getNotes().get(i));
+		}
+		SingleChord chord = new SingleChord(amchord.getFigure(), amchord.getDots(), pitches);
+		chord.setLayer(layer);
+		layer.addSymbol(chord);
+		scoreVoice.add(chord);
+		coreSymbols.put(amchord, chord);
+		//chord.setVoice(scoreVoice); // already set
+	}
+
+	private ScientificPitch getScientificPitch(AMNoteOrRest amNoteOrRest) throws IM3Exception {
+		Accidentals accidental = Accidentals.NATURAL;
+		if (amNoteOrRest.getAccidental() != null) { //TODO - ver diferencia entre accidental y alteration
+			accidental = amNoteOrRest.getAccidental().getAccidental(); 
+		} else if (amNoteOrRest.getAlteration() != null) {
+			accidental = Accidentals.alterToAccidentals(amNoteOrRest.getAlteration());
+		} 
+		return new ScientificPitch(
+				new PitchClass(amNoteOrRest.getDiatonicNote(), 
+						accidental), amNoteOrRest.getOctave());
+	}
+	
+	private void importNoteOrRest(ScorePart scorePart, AMNoteOrRest amNoteOrRest) throws ImportException, IM3Exception {
+		Time time;
+		if (anacrusisOffset == null) {
+			time = amNoteOrRest.getTime();
+		} else {
+			time = anacrusisOffset.add(amNoteOrRest.getTime());
+		}
+		//System.out.println("Inserting at time " + time + ", " + amNoteOrRest);
+		Atom sds;
+		
+		if (amNoteOrRest.isCueNote() || amNoteOrRest.isGraceNote()) {
+			throw new ImportException("Unimplemented cue and grace notes"); //TODO Grace notes
+		}
+			
+		/*ScoreVoice scoreVoice = getVoice(scorePart, amNoteOrRest.getLayer());
+		Staff staff = getStaff(amNoteOrRest.getStaff());
+		StaffLayer layer = staff.getLayer(scoreVoice.getNumber());
+		if (layer == null) {
+			layer = new StaffLayer(staff, scoreVoice.getNumber());
+			staff.addLayer(layer);
+		}*/
+		Staff staff = getStaff(amNoteOrRest.getStaff()); 
+		ScoreVoice scoreVoice = getVoice(scorePart, amNoteOrRest.getLayer());
+		StaffLayer layer = getOrCreateLayer(scorePart, scoreVoice, staff, amNoteOrRest.getLayer());		
+		
+		if (amNoteOrRest.isRest()) {
+			SingleRest rest = new SingleRest(amNoteOrRest.getFigure(), amNoteOrRest.getDots());
+			sds = rest;
+		} else {
+			//TODO comprobar que accidental y alteration son coherentes
+			/*Accidentals accidental = Accidentals.NATURAL;
+			if (amNoteOrRest.getAlteration() != null) {
+				accidental = Accidentals.alterToAccidentals(amNoteOrRest.getAlteration());
+			}*/
+			
+			SingleNote note = new SingleNote(amNoteOrRest.getFigure(), amNoteOrRest.getDots(), getScientificPitch(amNoteOrRest));
+			AtomFigure noteFigure = note.getFigures().get(0); // used for fermate 
+			/*FRACTIONS if (amNoteOrRest.getLyrics() != null) {
+				HashMap<String, ScoreLyricVerse> verses = new HashMap<>();
+				int nverse = 0;
+				for (Entry<String, AMLyrics> entry: amNoteOrRest.getLyrics().entrySet()) {
+					if (entry.getValue().getText() != null) {
+						ScoreLyricVerse verse = verses.get(entry.getKey());
+						if (verse == null) {
+							verse = new ScoreLyricVerse(nverse++, staff);
+							verses.put(entry.getKey(), verse);
+						}
+						note.addLyric(verse, entry.getValue().getText()); //TODO Syllabic
+					}
+				}
+			}
+			
+			note.setStemDirection(amNoteOrRest.getStemDirection());*/
+			
+			if (amNoteOrRest.getConnectors() != null) {
+				for (IAMConnector amconnector: amNoteOrRest.getConnectors()) {
+					if (amconnector.getTo() == amNoteOrRest) {
+						if (amconnector instanceof AMTie) {
+							AMTie amtie = (AMTie) amconnector;
+							ISymbolInLayer from = coreSymbols.get(amtie.getFrom());
+							if (from == null) {
+								throw new ImportException("Tie source note not found");
+							}
+							if (!(from instanceof SingleNote)) {
+								//TODO Acordes
+								throw new ImportException("Only ties to single notes supported so far, and found " + from.getClass());
+							}
+							
+							SingleNote fromNote = (SingleNote) from;
+							noteFigure = fromNote.addTiedNote(amNoteOrRest.getFigure(), amNoteOrRest.getDots());
+							note = null; // we don't want to add this note as a new atom
+							//System.out.println(note + "\n\t" + fromNote);
+							/*Tie tie = new Tie(fromNote, note);
+							note.addConnector(tie);
+							fromNote.addConnector(tie);
+							notationScore.addConnector(tie); //TODO - ¿hace falta?*/
+							//System.out.println("ADDDDDDING TIE ");
+						} else if (amconnector instanceof AMSlur) {
+							pendingSlursTo.add((AMSlur) amconnector);
+						} else {
+							throw new ImportException("Unsupported connector class: " + amconnector.getClass().getName());
+						}
+					}
+				}
+			}
+			
+			if (amNoteOrRest.getMarkers() != null) {
+				for (IAMMarker marker: amNoteOrRest.getMarkers()) {
+					if (marker instanceof AMFermata) {
+						AMFermata amfermata = (AMFermata) marker;
+						//TODO en musicxmlimporter
+						PositionAboveBelow position = amfermata.getPosition();
+						if (position == PositionAboveBelow.UNDEFINED) { // TODO Calcular lo que es mejor
+							position = PositionAboveBelow.ABOVE;
+						} 
+						note.setTime(time); // it will be given again on voice insert
+						staff.addFermata(noteFigure, position);
+					} else if (marker instanceof AMDynamics) {
+						AMDynamics amdynamics = (AMDynamics) marker;
+						addDynamics(staff, amdynamics);
+
+					} else {
+						throw new ImportException("Unsupported marker class: " + marker.getClass().getName() + " for note");
+					}
+				}
+			}
+			
+			sds = note;
+		}
+		sds.setLayer(layer);
+		//System.out.println("ADDING TO LAYER: " + layer);
+		//System.out.println("ScorePart: " + scorePart.getName() + "\t" + amNoteOrRest.getTime() + "\t" + amNoteOrRest.getDuration() + "\t\t" + time + "\t" + sds.getDurationInTicks() + "\t" + (time + sds.getDurationInTicks()));
+		/*FRACCIONES scoreVoice.fillGapUntil(layer, time);*/
+		scoreVoice.add(time, sds);
+		layer.addSymbol(sds);
+		//System.out.println("CS: am=" + amNoteOrRest);
+		coreSymbols.put(amNoteOrRest, sds);
+	}
+
+	private void handleSlurs() throws ImportException {
+		for (AMSlur amslur: pendingSlursTo) {
+			ISymbolInLayer fromSymbol = coreSymbols.get(amslur.getFrom());
+			if (fromSymbol == null) {
+				throw new ImportException("Slur source note not found");
+			}
+			ISymbolInLayer toSymbol = coreSymbols.get(amslur.getTo());
+			if (toSymbol == null) {
+				throw new ImportException("Slur target note not found");
+			}
+			PositionAboveBelow position = amslur.getPlacement();
+			if (position == PositionAboveBelow.UNDEFINED) {
+				position = PositionAboveBelow.BELOW; //TODo Calcular lo que es mejor
+			}
+			
+			ITimedSymbolWithConnectors fromSymbolWithConnector;
+			if (!(fromSymbol instanceof ITimedSymbolWithConnectors)) {
+				throw new ImportException("Slur source is not a ISymbolWithConnectors, it is a " + fromSymbol.getClass());
+			}
+			fromSymbolWithConnector = (ITimedSymbolWithConnectors) fromSymbol;
+
+			ITimedSymbolWithConnectors toSymbolWithConnector;
+			if (!(toSymbol instanceof ITimedSymbolWithConnectors)) {
+				throw new ImportException("Slur target is not a ISymbolWithConnectors, it is a " + toSymbol.getClass());
+			}
+			toSymbolWithConnector = (ITimedSymbolWithConnectors) toSymbol;
+			
+			Slur slur = new Slur(fromSymbolWithConnector, toSymbolWithConnector, position);
+			if (fromSymbolWithConnector.containsConnectorTo(Slur.class, toSymbolWithConnector)) {
+				throw new ImportException("Duplicated outgoing slur " + slur + " from " + fromSymbol + " to " + toSymbol);
+			}
+			if (toSymbolWithConnector.containsConnectorFrom(Slur.class, fromSymbolWithConnector)) {
+				throw new ImportException("Duplicated ingoing slur " + slur + " from " + fromSymbol + " to " + toSymbol);
+			}
+			fromSymbolWithConnector.addConnector(slur);
+			toSymbolWithConnector.addConnector(slur);
+			notationScore.addConnector(slur);
+			//System.out.println("am " + amslur + " --> " + slur);
+		}			
+	}	
+
+	private void handleHairpins() throws ImportException {
+		for (AMHairpin amhairpin: pendingHairpinsTo) {
+			ISymbolInLayer fromSymbol = coreSymbols.get(amhairpin.getFrom());
+			if (fromSymbol == null) {
+				throw new ImportException("Hairpin source note not found");
+			}
+			ISymbolInLayer toSymbol = coreSymbols.get(amhairpin.getTo());
+			if (toSymbol == null) {
+				throw new ImportException("Hairpin target note not found");
+			}
+			
+			//TODO ¿y si lo quiero conectar a notas?
+			if (!(fromSymbol instanceof StaffTimedPlaceHolder)) {
+				throw new ImportException("Expected Hairpin source type to be StaffTimedPlaceHolder and it is: " + fromSymbol.getClass());
+			}
+			if (!(toSymbol instanceof StaffTimedPlaceHolder)) {
+				throw new ImportException("Expected Hairpin target type to be StaffTimedPlaceHolder and it is: " + fromSymbol.getClass());
+			}
+			
+			StaffTimedPlaceHolder fromPlaceHolder = (StaffTimedPlaceHolder) fromSymbol;
+			StaffTimedPlaceHolder toPlaceHolder = (StaffTimedPlaceHolder) toSymbol;
+			PositionAboveBelow position = amhairpin.getPlacement();
+			if (position == PositionAboveBelow.UNDEFINED) {
+				position = PositionAboveBelow.BELOW; //TODo Calcular lo que es mejor
+			}
+			Wedge wedge;
+			Staff staff = fromSymbol.getLayer().getStaff();
+			if (amhairpin instanceof AMHairpinCrescendo) {
+				wedge = new DynamicCrescendo(staff, (StaffTimedPlaceHolder)fromSymbol, (StaffTimedPlaceHolder)toSymbol); 
+			} else if (amhairpin instanceof AMHairpinDiminuendo) {
+				wedge = new DynamicDiminuendo(staff, (StaffTimedPlaceHolder)fromSymbol, (StaffTimedPlaceHolder)toSymbol);
+			} else {
+				throw new ImportException("Invalid hairpin type: " + amhairpin.getClass());
+			}
+			if (fromPlaceHolder.containsConnectorTo(Wedge.class, toPlaceHolder)) {
+				throw new ImportException("Duplicated outgoing hairpin " + wedge + " from " + fromSymbol + " to " + toSymbol);
+			}
+			if (toPlaceHolder.containsConnectorFrom(Wedge.class, fromPlaceHolder)) {
+				throw new ImportException("Duplicated ingoing hairpin " + wedge + " from " + fromSymbol + " to " + toSymbol);
+			}
+			fromPlaceHolder.addConnector(wedge);
+			toPlaceHolder.addConnector(wedge);
+			notationScore.addConnector(wedge);
+			//System.out.println("am " + amslur + " --> " + slur);
+		}			
+	}		
+	private void addDynamics(Staff staff, AMDynamics amdynamics) throws IM3Exception, ImportException {
+		DynamicMark m;
+		Time time = amdynamics.getTime();
+		switch (amdynamics.getType()) { 
+		case "fff":
+			m = new DynamicMarkFortePossible(staff, time);
+			break;					
+		case "ff":
+			m = new DynamicMarkFortissimo(staff, time);
+			break;					
+		case "f":
+			m = new DynamicMarkForte(staff, time);
+			break;					
+		case "mf":
+			m = new DynamicMarkMezzoForte(staff, time);
+			break;
+		case "mp":
+			m = new DynamicMarkMezzoPiano(staff, time);
+			break;
+		case "p": 
+			m = new DynamicMarkPiano(staff, time);
+			break;
+		case "pp": 
+			m = new DynamicMarkPianissimo(staff, time);
+			break;
+		case "ppp": 
+			m = new DynamicMarkPianoPossible(staff, time);
+			break;		
+			default:
+				throw new ImportException("Unsupported dynamics: "  +  amdynamics.getType());
+		}
+		staff.addMark(m);
+	}
+
+	private void importStaffPlaceHolder(ScorePart scorePart, AMStaffPlaceHolder amplaceHolder) throws IM3Exception, ImportException {
+		Staff staff = getStaff(amplaceHolder.getStaff());
+		if (amplaceHolder.getMarkers() != null) {
+			if (staff == null) {
+				throw new ImportException("The place holder should have a staff");
+			}
+			for (IAMMarker marker: amplaceHolder.getMarkers()) {
+				if (marker instanceof AMDynamics) {
+					AMDynamics amdynamics = (AMDynamics) marker;
+					addDynamics(staff, amdynamics);
+				} else {
+					throw new ImportException("Unsupported marker class: " + marker.getClass().getName() + " for staff place holder");
+				}
+			}
+		}
+		if (amplaceHolder.getConnectors() != null) {
+			StaffTimedPlaceHolder placeHolder = placeHolders.get(amplaceHolder);
+			if (placeHolder == null) {
+				ScoreVoice scoreVoice = getVoice(scorePart, amplaceHolder.getLayer());
+				StaffLayer layer = getOrCreateLayer(scorePart, scoreVoice, staff, amplaceHolder.getLayer());
+				if (layer == null) {
+					throw new ImportException("Layer with number " + scoreVoice.getNumber() + " not found in staff " + staff);
+				}
+				placeHolder = new StaffTimedPlaceHolder(layer, amplaceHolder.getTime());
+				//System.out.println("PH:" + amplaceHolder);
+				placeHolders.put(amplaceHolder, placeHolder);
+				layer.addSymbol(placeHolder);
+				coreSymbols.put(amplaceHolder, placeHolder);
+			}
+			for (IAMConnector connector: amplaceHolder.getConnectors()) {
+				if (connector.getTo() == amplaceHolder) {
+					if (connector instanceof AMSlur) {
+						pendingSlursTo.add((AMSlur) connector);
+					} else if (connector instanceof AMHairpin) {
+						pendingHairpinsTo.add((AMHairpin) connector);
+					} else {
+						throw new ImportException("Unsupported connector class: " + connector.getClass().getName() + " for staff place holder");
+					}
+				}
+			}
+		}
+	}
+	
+	private Staff createStaff(ScorePart scorePart, String number, AMStaff amstaff) throws ImportException, IM3Exception {
+		Staff staff;
+		if (amstaff.getLines() == null || amstaff.getLines() == 5) {
+				staff = new Pentagram(scorePart, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else if (amstaff.getLines() == 1) {
+				staff = new PercussionStaff(scorePart, hierarchicalIdGenerator.nextStaffHierarchicalOrder(null),
+						hierarchicalIdGenerator.getNextVerticalDivisionIdentifier());
+		} else {
+				throw new ImportException("Unimplemented staves with " + amstaff.getLines() + " lines");
+		}
+		staff.setNotationType(amstaff.getNotationType());
+		if (amstaff.getType() != null) {
+			staff.setOssia(amstaff.getType().equals("ossia"));
+		}
+		scorePart.addStaff(staff);
+		staves.put(number, staff);
+		notationScore.addStaff(staff);
+		return staff;
+	}
+
+	private void importMetadata() {
+		Metadata metadata = new Metadata(); 
+		notationScore.setMetadata(metadata);
+		FileDescription fd = new FileDescription();
+		metadata.setDescription(fd);
+		Header header = new Header();
+		fd.setHeader(header);
+		
+		if (amSong.getWork() != null) {
+			AMWork amWork = amSong.getWork(); 
+			if (amWork.getNumber() != null || amWork.getTitle() != null) {
+				Title title = new Title(amWork.getNumber(), amWork.getTitle());
+				header.addTitle(title);
+			}
+			
+			if (amWork.getPersons() != null) {
+				for (Entry<String, String> entry: amWork.getPersons().getTypeValue().entrySet()) {
+					header.addPerson(new Person(entry.getKey(), entry.getValue()));					
+				}
+			}
+		}
+		
+		if (amSong.getMovement() != null) {
+			//TODO Esto no debería estar aquí así, un movimiento es una cosa, y el título de dentro otra
+			AMMovement amMovement = amSong.getMovement(); 
+			if (amMovement.getNumber() != null || amMovement.getTitle() != null) {
+				Title title = new Title(amMovement.getNumber(), amMovement.getTitle());
+				header.addTitle(title);
+			}			
+		}
+		
+		if (amSong.getIdentification() != null && amSong.getIdentification().getCreators() != null) {
+			for (AMCreator creator : amSong.getIdentification().getCreators()) {
+				Person person = new Person();
+				person.setName(creator.getValue());
+				person.setRole(creator.getType());
+				header.addPerson(person);
+			}
+		}
+	}
+}

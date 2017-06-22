@@ -1,0 +1,152 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.io.ImportException;
+
+//TODO ¿Tiene sentido tener esto o podemos usar Atoms?
+public abstract class AMDurationalSymbol extends AMTimedElement implements IAMElementWithStaff, IAMElementWithLayer {
+	/**
+	 * In terms of quarters. It may not be set, then it has to be computed from figure
+	 */
+	protected Time duration;
+	/**
+	 * quarter, half, etc...
+	 */
+	Figures figure;
+	
+	int dots = 0;
+	
+	/**
+	 * Usually a layer number
+	 */
+	protected String layer;
+	protected AMStaff staff;
+
+	public AMDurationalSymbol(int originalPosition, Time time) {
+		super(originalPosition, time);
+	}
+	
+	public Time getDuration() throws ImportException {
+		if (duration == null) {
+			if (figure == null) {
+				throw new ImportException("Cannot compute duration without duration or figure");
+			}
+			Fraction fduration = figure.getDuration();
+			Fraction lastDur = fduration;
+			for (int i=0; i<dots; i++) {
+				lastDur = lastDur.multiplyBy(Fraction.ONE_HALF);
+				fduration = fduration.add(lastDur);
+			}
+			duration = new Time(fduration);
+		}
+		return duration;
+	}
+
+	public void setDuration(Time duration) {
+		this.duration = duration;
+	}
+
+	public Figures getFigure() {
+		return figure;
+	}
+	public void setFigure(Figures figure) {
+		this.figure = figure;
+	}
+
+	public void addDot() {
+		dots++;
+	}
+
+	public void setDots(int dots) {
+		this.dots = dots;
+	}
+	
+
+	public int getDots() {
+		return dots;
+	}
+
+	@Override
+	public String toString() {
+		return "[time=" + time + ", duration=" + duration + "]";
+	}
+
+
+	public String getLayer() {
+		return layer;
+	}
+
+
+	public void setLayer(String layer) {
+		this.layer = layer;
+	}
+
+
+	public AMStaff getStaff() {
+		return staff;
+	}
+
+
+	public void setStaff(AMStaff staff) {
+		this.staff = staff;
+	}
+
+
+	public boolean hasDuration() {
+		return duration != null;
+	}
+
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + dots;
+		result = prime * result + ((duration == null) ? 0 : duration.hashCode());
+		result = prime * result + ((figure == null) ? 0 : figure.hashCode());
+		result = prime * result + ((layer == null) ? 0 : layer.hashCode());
+		result = prime * result + ((staff == null) ? 0 : staff.hashCode());
+		return result;
+	}
+
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AMDurationalSymbol other = (AMDurationalSymbol) obj;
+		if (dots != other.dots)
+			return false;
+		if (duration == null) {
+			if (other.duration != null)
+				return false;
+		} else if (!duration.equals(other.duration))
+			return false;
+		if (figure == null) {
+			if (other.figure != null)
+				return false;
+		} else if (!figure.equals(other.figure))
+			return false;
+		if (layer == null) {
+			if (other.layer != null)
+				return false;
+		} else if (!layer.equals(other.layer))
+			return false;
+		if (staff == null) {
+			if (other.staff != null)
+				return false;
+		} else if (!staff.equals(other.staff))
+			return false;
+		return true;
+	}
+	
+	
+	
+}

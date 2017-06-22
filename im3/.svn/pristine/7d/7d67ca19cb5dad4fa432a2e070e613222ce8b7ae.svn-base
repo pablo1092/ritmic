@@ -1,0 +1,218 @@
+package es.ua.dlsi.im3.core.score;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+public class AtomPitch implements ITimedElementInStaff, Comparable<AtomPitch>, IUniqueIDObject {
+	private AtomFigure atomFigure; 
+	private ScientificPitch scientificPitch;
+	private Time onsetRelativeToFigure;
+	private AtomContinuationPitch tiedTo;
+	private String ID;
+	/**
+	 * Force this accidental to appear
+	 */
+	private Accidentals writtenExplicitAccidental;
+	/**
+	 * For pitches that are not contained in the same staff as the atom they belong to
+	 */
+	private Staff staffChange;
+	
+	public AtomPitch(AtomFigure atomFigure, ScientificPitch spitch) {
+		if (atomFigure == null) {
+			throw new IM3RuntimeException("AtomFigure cannot be null");
+		}
+
+		this.scientificPitch = spitch;
+		this.atomFigure = atomFigure;
+		onsetRelativeToFigure = new Time(Fraction.ZERO);
+		tiedTo = null;
+	}
+
+	public ScientificPitch getScientificPitch() {
+		return scientificPitch;
+	}
+
+	public void setRelativeOnset(Fraction currentRelativeOnset) {
+		this.onsetRelativeToFigure = new Time(currentRelativeOnset);		
+	}
+
+	public Time getRelativeOnset() {
+		return this.onsetRelativeToFigure;
+	}
+	
+	//TODO - guardar para que no haya que recalcularla siempre
+	/**
+	 * Absolute
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public Time getTime() throws IM3Exception {
+		if (atomFigure.getTime() == null) {
+			throw new IM3Exception("The atomFigure onset is null");
+		}
+		if (atomFigure.getTime() == null) {
+			throw new IM3Exception("The onsetRelativeToFigure is null");
+		}
+		return atomFigure.getTime().add(onsetRelativeToFigure);
+	}
+
+	/**
+	 * Duration of its parent figure
+	 * @return
+	 */
+	public Time getDuration() {
+		return atomFigure.getDuration();
+	}
+	public Time getEndTime() throws IM3Exception {
+		return getTime().add(atomFigure.getDuration());
+	}
+	
+	@Override
+	public boolean hasTime() {
+		return atomFigure.hasTime() && onsetRelativeToFigure != null;
+	}
+		
+
+	//TODO Test (de todos los compareTo, equals, hashCode) !!!! URGENT
+	@Override
+	public int compareTo(AtomPitch o) {
+		int diff = 0;
+		if (hasTime() && o.hasTime()) {
+			try {
+				diff = getTime().compareTo(o.getTime());
+			} catch (IM3Exception e) {
+				// checked above in if condition
+				throw new IM3RuntimeException("This should happen: " + e);
+			}
+		} else {
+			diff = 0;
+		}
+		if (diff == 0) {
+			diff = getScientificPitch().compareTo(o.scientificPitch);
+			if (diff == 0) {
+				diff = atomFigure.compareTo(o.atomFigure);
+			}
+		}
+		return diff;
+	}
+
+	
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((atomFigure == null) ? 0 : atomFigure.hashCode());
+		result = prime * result + ((onsetRelativeToFigure == null) ? 0 : onsetRelativeToFigure.hashCode());
+		result = prime * result + ((scientificPitch == null) ? 0 : scientificPitch.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AtomPitch other = (AtomPitch) obj;
+		if (atomFigure == null) {
+			if (other.atomFigure != null)
+				return false;
+		} else if (!atomFigure.equals(other.atomFigure))
+			return false;
+		if (onsetRelativeToFigure == null) {
+			if (other.onsetRelativeToFigure != null)
+				return false;
+		} else if (!onsetRelativeToFigure.equals(other.onsetRelativeToFigure))
+			return false;
+		if (scientificPitch == null) {
+			if (other.scientificPitch != null)
+				return false;
+		} else if (!scientificPitch.equals(other.scientificPitch))
+			return false;
+		return true;
+	}
+
+	public AtomFigure getAtomFigure() {
+		return atomFigure;
+	}
+
+	public boolean isTiedToNext() {
+		return tiedTo != null;
+	}
+
+	public final AtomContinuationPitch getTiedTo() {
+		return tiedTo;
+	}
+
+	public final void setTiedTo(AtomContinuationPitch tiedTo) {
+		this.tiedTo = tiedTo;
+	}
+
+	@Override
+	public String __getID() {
+		return ID;
+	}
+
+	@Override
+	public void __setID(String id) {
+		this.ID = id;
+		
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "N";
+	}
+
+	public final Staff getStaffChange() {
+		return staffChange;
+	}
+
+	public final void setStaffChange(Staff staff) {
+		this.staffChange = staff;
+	}
+
+	public final Accidentals getWrittenExplicitAccidental() {
+		return writtenExplicitAccidental;
+	}
+
+	public final void setWrittenExplicitAccidental(Accidentals writtenExplicitAccidental) throws IM3Exception {
+		this.writtenExplicitAccidental = writtenExplicitAccidental;
+		setAccidental(writtenExplicitAccidental);
+	}
+
+	public void setAccidental(Accidentals accidental) throws IM3Exception {
+		if (this.scientificPitch == null) {
+			throw new IM3Exception("No scientific pitch defined yet");
+		}
+		this.scientificPitch.getPitchClass().setAccidental(accidental);		
+	}
+
+	@Override
+	public Staff getStaff() {
+		if (staffChange != null) {
+			return staffChange;
+		} else {
+			return atomFigure.getAtom().getStaff();
+		}
+	}
+
+	@Override
+	public void setStaff(Staff staff) {
+		this.setStaffChange(staff);		
+	}
+
+	@Override
+	public String toString() {
+		return "AtomPitch [scientificPitch=" + scientificPitch + ", writtenExplicitAccidental="
+				+ writtenExplicitAccidental + ", onsetRelativeToFigure=" + onsetRelativeToFigure + ", tiedTo=" + tiedTo
+				+ ", staffChange=" + staffChange + ", ID=" + ID + "]";
+	}
+	
+	
+}

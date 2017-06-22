@@ -1,0 +1,62 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+/**
+ * This class should be used just as a preset. The main class to be used is Atom
+ * @author drizo
+ *
+ */
+public class SingleChordTupletOLD extends Atom {
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	ArrayList<AtomFigure> atomFigures;
+
+	/**
+	 * This is just a pointer shortcut to the object in the Atom structure.
+	 */
+	ArrayList<AtomPitch> atomPitches;
+	/**
+	 * 
+	 * @param inSpaceOf
+	 * @param inSpaceOfDots
+	 * @param eachFigure
+	 * @param pitches pitches[i] represents a chord, pitches[i][j] is the j_th pitch in i_th
+	 */
+	public SingleChordTupletOLD(Figures inSpaceOf, int inSpaceOfDots, Figures eachFigure, ScientificPitch [] ... chordPitches) {
+		Fraction wholeDuration = inSpaceOf.getDurationWithDots(inSpaceOfDots);
+		Fraction eachNoteDuration = wholeDuration.divideBy(Fraction.getFraction(chordPitches.length, 1));
+		Fraction currentRelativeOnset = Fraction.ZERO;
+		atomFigures = new ArrayList<>();
+		atomPitches = new ArrayList<>();
+		for (ScientificPitch [] pitches: chordPitches) {			
+			AtomFigure atomFigure;
+			try {
+				atomFigure = addAtomFigureWithAlteredDuration(eachFigure, 0, eachNoteDuration);
+			} catch (IM3Exception e) {
+				throw new IM3RuntimeException(e); // it should never happen, everything is controlled			}
+			}
+			atomFigure.setRelativeOnset(currentRelativeOnset);
+			currentRelativeOnset = currentRelativeOnset.add(eachNoteDuration);			
+			for (ScientificPitch scientificPitch : pitches) {
+				AtomPitch atomPitch = atomFigure.addOnsetPitch(scientificPitch);
+				atomFigures.add(atomFigure);
+				atomPitches.add(atomPitch);
+			}
+		}
+	}
+	public ScientificPitch[] getPitches() {
+		ScientificPitch [] result = new ScientificPitch[atomPitches.size()];
+		int i=0;
+		for (AtomPitch atomPitch: atomPitches) {
+			result[i++] = atomPitch.getScientificPitch();
+		}
+		return result;
+	}
+}

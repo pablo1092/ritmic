@@ -1,0 +1,345 @@
+package es.ua.dlsi.im3.core.score;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.TreeSet;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.IM3RuntimeException;
+
+/**
+ * @author drizo
+ *
+ */
+public class ScoreLayer implements Comparable<ScoreLayer>, IUniqueIDObject {
+	String ID;
+	int number;
+	ScorePart part;
+	/**
+	 * This is the main list of elements
+	 */
+	List<Atom> atoms;
+
+	public ScoreLayer(ScorePart part, int number) {
+		this.part = part;
+		this.number = number; //TODO Comprobar que es un número único
+		atoms = new ArrayList<>();
+	}
+
+	/**
+	 * It updates the onsets from the atom fromAtom (not included) to the end of
+	 * the list of atoms
+	 * 
+	 * @param fromAtom
+	 * @throws IM3Exception
+	 */
+	private void updateOnsets(Atom fromAtom) throws IM3Exception {
+		int index = atoms.indexOf(fromAtom);
+		if (index < 0) {
+			throw new IM3Exception("Cannot find referenced atom");
+		}
+		// correct onset times
+		updateOnsets(index);
+	}
+
+	/**
+	 * It updates the onsets from the atom fromAtom (not included) to the end of
+	 * the list of atoms
+	 * 
+	 * @param fromAtom
+	 * @throws IM3Exception
+	 */
+	private void updateOnsets(int fromAtomIndex) throws IM3Exception {
+		// correct onset times
+		Atom lastAtom = atoms.get(fromAtomIndex);
+		for (int i = fromAtomIndex + 1; i < atoms.size(); i++) {
+			atoms.get(i).setTime(lastAtom.getOffset());
+		}
+	}
+
+	public void add(Atom atom) {
+		try {
+			atom.setTime(getDuration());
+			atom.setLayer(this);
+		} catch (IM3Exception e) {
+			throw new IM3RuntimeException("The onset should have been set for all atoms in a voice");
+		}
+		atoms.add(atom);
+	}
+	
+	//TODO añadir con huecos, he quitado el VoiceGap
+	public void add(Time time, Atom atom) {
+		atom.setTime(time);
+		atoms.add(atom);
+	}
+
+	
+	// TODO Test unitario
+	public void addAfter(Atom referenceAtom, Atom newAtom) throws IM3Exception {
+		int index = atoms.indexOf(referenceAtom);
+		if (index < 0) {
+			throw new IM3Exception("Cannot find referenced atom");
+		}
+		atoms.add(index + 1, newAtom);
+
+		// correct onset times
+		updateOnsets(index + 1);
+	}
+
+	// TODO Test unitario
+	public void addBefore(Atom referenceAtom, Atom newAtom) throws IM3Exception {
+		int index = atoms.indexOf(referenceAtom);
+		if (index < 0) {
+			throw new IM3Exception("Cannot find referenced atom");
+		}
+		atoms.add(index, newAtom);
+
+		// correct onset times
+		updateOnsets(index);
+	}
+	
+	public void remove(Atom atom) throws IM3Exception {
+		int index = atoms.indexOf(atom);
+		if (index < 0) {
+			throw new IM3Exception("Cannot find referenced atom");
+		}
+		atoms.remove(index);
+		updateOnsets(index);
+	}
+
+	
+	
+
+	/**
+	 * Sequence of pitches with their absolute onset times
+	 * 
+	 * @return
+	 */
+	public List<AtomPitch> getAtomPitches() {
+		ArrayList<AtomPitch> result = new ArrayList<>();
+		for (Atom atom : atoms) {
+			for (AtomFigure figure : atom.getFigures()) {
+				List<AtomPitch> ops = figure.getOnsetPitches();
+				if (ops != null) {
+					result.addAll(ops);
+				}
+			}
+		}
+		return result;
+	}
+	
+	/**
+	 * Sequence of figures with their absolute onset times
+	 * 
+	 * @return
+	 */
+	public List<AtomFigure> getAtomFigures() {
+		ArrayList<AtomFigure> result = new ArrayList<>();
+		for (Atom atom : atoms) {
+			result.addAll(atom.getFigures());
+		}
+		return result;
+	}	
+
+	/**
+	 * 
+	 * @return Num of atoms
+	 */
+	public int size() {
+		return atoms.size();
+	}
+
+	public Atom getAtom(int index) {
+		return atoms.get(index);
+	}
+
+	public Time getDuration() throws IM3Exception {
+		/*
+		 * Fraction duration = Fraction.ZERO; for (Atom atom: atoms) { duration
+		 * = duration.add(atom.getExactDuration()); } return new Time(duration);
+		 */
+		if (atoms.isEmpty()) {
+			return new Time(Fraction.ZERO);
+		} else {
+			return atoms.get(atoms.size() - 1).getOffset();
+		}
+	}
+
+	public void onAtomDurationChanged(Atom atom) throws IM3Exception {
+		updateOnsets(atom);
+
+	}
+
+	// ----------------------------------------------------------------------
+	// ----------------------- General information
+	// --------------------------------
+	// ----------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return "ScoreLayer [number=" + number + "]";
+	}
+
+	public ScorePart getPart() {
+		return part;
+	}
+
+	public void setPart(ScorePart part) {
+		this.part = part;
+	}
+
+	/**
+	 * package visibility for reordering in ScorePart
+	 *
+	 * @param i
+	 */
+	void setNumber(int i) {
+		this.number = i;
+	}
+
+	public int getNumber() {
+		return this.number;
+	}
+
+	/**
+	 * It does not contain atoms (notes, chords...)
+	 * 
+	 * @return
+	 */
+	public boolean isEmpty() {
+		return atoms.isEmpty();
+	}
+
+	@Override
+	public int compareTo(ScoreLayer o) {
+		if (this.getPart() != o.getPart()) {
+			return this.getPart().getNumber() - o.getPart().getNumber();
+		} else {
+			return this.number - o.number;
+		}
+	}
+
+	@Override
+	public int hashCode() {
+		int hash = 5;
+		hash = 43 * hash + this.number;
+		return hash;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		final ScoreLayer other = (ScoreLayer) obj;
+		if (this.number != other.number) {
+			return false;
+		}
+		return true;
+	}
+
+	public TreeSet<ScientificPitch> getScientificPitches() {
+		TreeSet<ScientificPitch> result = new TreeSet<>();
+		List<AtomPitch> pitchSeq = getAtomPitches();
+		for (AtomPitch atomPitch : pitchSeq) {
+			result.add(atomPitch.getScientificPitch());
+		}
+		return result;
+	}
+
+	//TODO Todos los métodos de bajo (within onset ...) son extremadamente ineficientes
+	// Debemos usar los RangeTree .... del im2
+	/*FRACCIONES public final List<AtomPitch> getAtomPitchesWithOnsetWithin(Measure bar) throws IM3Exception {
+		return getAtomPitchesWithOnsetWithin(bar.getTime(), bar.getEndTime());
+	}*/
+
+	/**
+	 * 
+	 * @param fromTime Included
+	 * @param toTime Not included
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public List<AtomPitch> getAtomPitchesWithOnsetWithin(Time fromTime, Time toTime) {
+		ArrayList<AtomPitch> result = new ArrayList<>();
+		List<AtomPitch> pitchSeq = getAtomPitches();
+		for (AtomPitch atomPitch : pitchSeq) {
+			try {
+				if (atomPitch.getTime().isContainedIn(fromTime, toTime)) {
+					result.add(atomPitch);
+				}
+			} catch (IM3Exception e) {
+				throw new IM3RuntimeException("Some atom pitch has not time, but it is inserted in the voice:" + e);
+			}
+		}
+		return null;
+	}
+
+	//TODO Test unitario
+	/**
+	 * @param fromTime Included
+	 * @param toTime Not included
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public List<AtomPitch> getAtomPitchesActiveWithin(Time fromTime, Time toTime) throws IM3Exception {
+		ArrayList<AtomPitch> result = new ArrayList<>();
+		List<AtomPitch> pitchSeq = getAtomPitches();
+		for (AtomPitch atomPitch : pitchSeq) {
+			if (Time.overlaps(fromTime, toTime, atomPitch.getTime(), atomPitch.getEndTime())) {
+				result.add(atomPitch);
+			}
+		}
+		return null;
+	}
+	
+	/*FRACCIONES public final List<AtomFigure> getAtomFiguresWithOnsetWithin(Measure bar) throws IM3Exception {
+		return getAtomFiguresWithOnsetWithin(bar.getTime(), bar.getEndTime());
+	}*/
+
+	/**
+	 * 
+	 * @param fromTime Included
+	 * @param toTime Not included
+	 * @return
+	 * @throws IM3Exception 
+	 */
+	public List<AtomFigure> getAtomFiguresWithOnsetWithin(Time fromTime, Time toTime)  {
+		ArrayList<AtomFigure> result = new ArrayList<>();
+		List<AtomFigure> figureSeq = getAtomFigures();
+		for (AtomFigure atomPitch : figureSeq) {
+			try {
+				if (atomPitch.getTime().isContainedIn(fromTime, toTime)) {
+					result.add(atomPitch);
+				}
+			} catch (IM3Exception e) {
+				throw new IM3RuntimeException("Some atom pitch has not time, but it is inserted in the voice:" + e);
+			}
+		}
+		return result;
+	}
+
+
+	
+	@Override
+	public String __getID() {
+		return ID;
+	}
+
+	@Override
+	public void __setID(String id) {
+		this.ID = id;
+		
+	}
+
+	@Override
+	public String __getIDPrefix() {
+		return "V";
+	}
+
+}

@@ -1,0 +1,26 @@
+package es.ua.dlsi.im3.core.score.io.abstractmodel;
+
+import java.util.HashMap;
+
+public class AMMultipleTypedText {
+	HashMap<String, String> typeValue;
+	
+	public AMMultipleTypedText() {
+		typeValue = new HashMap<>();
+	}
+	
+	public void add(String type, String value) {
+		typeValue.put(type, value);
+	}
+
+	@Override
+	public String toString() {
+		return "AMMultipleTypedText [typeValue=" + typeValue + "]";
+	}
+
+	public HashMap<String, String> getTypeValue() {
+		return typeValue;
+	}	
+	
+	
+}

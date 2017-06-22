@@ -1,0 +1,249 @@
+/*
+ * Copyright (C) 2015 David Rizo Valero
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package es.ua.dlsi.im3.core.score.io;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+
+import org.apache.commons.lang3.math.Fraction;
+
+import es.ua.dlsi.im3.IM3Exception;
+import es.ua.dlsi.im3.core.score.Meter;
+import es.ua.dlsi.im3.core.score.Atom;
+import es.ua.dlsi.im3.core.score.AtomFigure;
+import es.ua.dlsi.im3.core.score.Measure;
+import es.ua.dlsi.im3.core.score.Clef;
+import es.ua.dlsi.im3.core.score.Figures;
+import es.ua.dlsi.im3.core.score.HierarchicalIDGenerator;
+import es.ua.dlsi.im3.core.score.NotationType;
+import es.ua.dlsi.im3.core.score.ScorePart;
+import es.ua.dlsi.im3.core.score.ScoreSong;
+import es.ua.dlsi.im3.core.score.ScoreLayer;
+import es.ua.dlsi.im3.core.score.Staff;
+import es.ua.dlsi.im3.core.score.StaffSystem;
+import es.ua.dlsi.im3.core.score.Time;
+import es.ua.dlsi.im3.core.score.clefs.ClefC1;
+import es.ua.dlsi.im3.core.score.clefs.ClefC2;
+import es.ua.dlsi.im3.core.score.clefs.ClefC3;
+import es.ua.dlsi.im3.core.score.clefs.ClefC4;
+import es.ua.dlsi.im3.core.score.clefs.ClefC5;
+import es.ua.dlsi.im3.core.score.clefs.ClefEmpty;
+import es.ua.dlsi.im3.core.score.clefs.ClefF3;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4OttavaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4OttavaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4QuindicesimaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefF4QuindicesimaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefF5;
+import es.ua.dlsi.im3.core.score.clefs.ClefG1;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2OttavaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2OttavaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2QuindicesimaAlta;
+import es.ua.dlsi.im3.core.score.clefs.ClefG2QuindicesimaBassa;
+import es.ua.dlsi.im3.core.score.clefs.ClefPercussion;
+import es.ua.dlsi.im3.core.score.clefs.ClefTab;
+import es.ua.dlsi.im3.io.ImportException;
+
+/**
+ *
+ * @author drizo
+ * @param <FiguresType>
+ */
+public class NotationImporter {
+	/**
+	 * Imported notationScore
+	 */
+	protected ScoreSong notationScore;
+	/**
+	 * Song associated to the notationScore
+	 */
+	// 2016110 protected Time measuresStartingTime = 0;
+	protected Meter currentMeter;
+	//protected Key currentKey;
+	protected Atom lastTuplet = null;
+	//protected ModernGraceNote lastGraceNote = null;
+	protected Figures figure = null;
+	protected ScorePart currentPart;
+	//protected int pendingGraceNoteDuration;
+	protected Measure currentBar;
+	//protected ScoreNote note = null;
+	//protected ScoreRest rest = null;
+	protected ScoreLayer currentVoice;
+	protected AtomFigure currentDurationSymbol;
+	protected AtomFigure lastDurationElement;
+	// ScoreDurationalElement<FiguresType> scoreSoundingElement;
+	protected ArrayList<AtomFigure> measurescorenotes;
+	protected HashMap<String, ScorePart> scoreParts = null;
+	protected Staff currentStaff;
+	protected HierarchicalIDGenerator hierarchicalIdGenerator;
+
+	public NotationImporter() {
+		hierarchicalIdGenerator = new HierarchicalIDGenerator();
+	}
+
+	protected Time getTime() throws IM3Exception {
+		if (lastDurationElement == null) {
+			return Time.TIME_ZERO;
+		} else {
+			return lastDurationElement.getTime().add(lastDurationElement.getDuration());
+		}
+	}
+
+	protected String nextStaffGroupHierarchicalOrder(StaffSystem currentPartGroup) {
+		return hierarchicalIdGenerator.nextStaffGroupHierarchicalOrder(currentPartGroup);
+	}
+
+	protected String nextStaffHierarchicalOrder(StaffSystem staffGroup) {
+		return hierarchicalIdGenerator.nextStaffHierarchicalOrder(staffGroup);
+	}
+
+	protected void insertMeterIntoScoreSong(NotationType notationType, Meter meter, Collection<Staff> staves)
+			throws ImportException, IM3Exception {
+		// 20161110 Meter otherMeter =
+		// this.notationScore.getMeterWithOnset(measuresStartingTime);
+		Time mtime = getTime();
+		Meter otherMeter = this.notationScore.getMeterWithOnsetOrNull(getTime());
+		if (otherMeter != null) {
+			if (!otherMeter.equals(meter)) {
+				throw new ImportException("There are two meters at the same time different: " + otherMeter.toString()
+						+ " and a new one " + meter.toString());
+			}
+			currentMeter = otherMeter;
+		} else {
+			//// 20161110 this.notationScore.addMeter(measuresStartingTime,
+			//// meter);
+			this.notationScore.addMeter(mtime, meter);
+			// sparts.addMeter(meter);
+			// ticksFactor = 4.0 / (double)meter.getDenominator();
+			currentMeter = meter;
+		}
+	}
+
+	protected Clef createClef(NotationType notationType, String shape, int line, Integer octaveChange)
+			throws ImportException {
+		Clef result;
+		switch (shape) {
+		case "G":
+			if (line == 1) {
+				result = new ClefG1();
+			} else if (line != 2) {
+				throw new ImportException("Invalid line " + line + " for G clef");
+			}
+			if (octaveChange != null) {
+				switch (octaveChange) {
+				case -2:
+					result = new ClefG2QuindicesimaBassa();
+					break;
+				case -1:
+					result = new ClefG2OttavaBassa();
+					break;
+				case 0:
+					result = new ClefG2();
+					break;
+				case 2:
+					result = new ClefG2QuindicesimaAlta();
+					break;
+				case 1:
+					result = new ClefG2OttavaAlta();
+					break;
+				default:
+					throw new ImportException("Invalid octave change " + octaveChange + " for G clef");
+				}
+			} else {
+				// if no clef octave change
+				result = new ClefG2();
+			}
+			break;
+		case "F":
+			switch (line) {
+			case 3:
+				result = new ClefF3();
+				break;
+			case 4:
+				if (octaveChange != null) {
+					switch (octaveChange) {
+					case -2:
+						result = new ClefF4QuindicesimaBassa();
+						break;
+					case -1:
+						result = new ClefF4OttavaBassa();
+						break;
+					case 0:
+						result = new ClefF4();
+						break;
+					case 2:
+						result = new ClefF4QuindicesimaAlta();
+						break;
+					case 1:
+						result = new ClefF4OttavaAlta();
+						break;
+					default:
+						throw new ImportException("Invalid octave change " + octaveChange + " for F clef");
+					}
+				} else {
+					// if no clef octave change
+					result = new ClefF4();
+				}
+				break;
+			case 5:
+				result = new ClefF5();
+				break;
+			default:
+				throw new ImportException("Invalid line " + line + " for F clef");
+			}
+		case "C":
+			switch (line) {
+			case 1:
+				result = new ClefC1();
+				break;
+			case 2:
+				result = new ClefC2();
+				break;
+			case 3:
+				result = new ClefC3();
+				break;
+			case 4:
+				result = new ClefC4();
+				break;
+			case 5:
+				result = new ClefC5();
+				break;
+			default:
+				throw new ImportException("Invalid line " + line + " for C clef");
+			}
+		case "percussion":
+			result = new ClefPercussion();
+			break;
+		case "tab":
+			result = new ClefTab();
+			break;
+		case "none":
+			result = new ClefEmpty();
+			break;
+		default:
+			throw new ImportException("Unknown clef pitch: " + shape);
+		}
+		result.setNotationType(notationType);
+		return result;
+	}
+
+	protected Time computeDuration(int iduration, int divisions) {
+		return new Time(Fraction.getFraction(iduration, divisions));
+	}
+}
